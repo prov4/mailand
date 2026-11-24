@@ -18,7 +18,9 @@ func TestSeed(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	ctx := context.Background()
 	var out bytes.Buffer
-	now := time.Now()
+	// Noon, so "today" and "yesterday" mail does not depend on when the test runs.
+	t0 := time.Now()
+	now := time.Date(t0.Year(), t0.Month(), t0.Day(), 12, 0, 0, 0, t0.Location())
 	if err := run(ctx, false, now, &out); err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +43,7 @@ func TestSeed(t *testing.T) {
 	if err != nil || len(objs) < 8 {
 		t.Fatalf("events around now: %d %v", len(objs), err)
 	}
-	if cs, _ := st.SearchContacts(ctx, "", false, 0); len(cs) != 14 {
+	if cs, _ := st.SearchContacts(ctx, "", false, 0); len(cs) != 17 {
 		t.Fatalf("contacts = %d", len(cs))
 	}
 	var total, unread, today, yesterday, big, inline int

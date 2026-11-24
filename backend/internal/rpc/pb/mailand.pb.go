@@ -1506,21 +1506,25 @@ func (x *ListEventsRequest) GetCalendarIds() []string {
 
 // One occurrence of an event; recurring events are expanded by the daemon.
 type CalendarEvent struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"` // unique per occurrence
-	CalendarId    string                 `protobuf:"bytes,2,opt,name=calendar_id,json=calendarId,proto3" json:"calendar_id,omitempty"`
-	Uid           string                 `protobuf:"bytes,3,opt,name=uid,proto3" json:"uid,omitempty"` // iCalendar UID (shared by all occurrences)
-	Summary       string                 `protobuf:"bytes,4,opt,name=summary,proto3" json:"summary,omitempty"`
-	Location      string                 `protobuf:"bytes,5,opt,name=location,proto3" json:"location,omitempty"`
-	Description   string                 `protobuf:"bytes,6,opt,name=description,proto3" json:"description,omitempty"`
-	StartUnix     int64                  `protobuf:"varint,7,opt,name=start_unix,json=startUnix,proto3" json:"start_unix,omitempty"`
-	EndUnix       int64                  `protobuf:"varint,8,opt,name=end_unix,json=endUnix,proto3" json:"end_unix,omitempty"` // exclusive; all-day events end at local midnight
-	AllDay        bool                   `protobuf:"varint,9,opt,name=all_day,json=allDay,proto3" json:"all_day,omitempty"`
-	Recurring     bool                   `protobuf:"varint,10,opt,name=recurring,proto3" json:"recurring,omitempty"`
-	Organizer     string                 `protobuf:"bytes,11,opt,name=organizer,proto3" json:"organizer,omitempty"`
-	Status        string                 `protobuf:"bytes,12,opt,name=status,proto3" json:"status,omitempty"` // "CONFIRMED", "TENTATIVE" or ""
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Id             string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"` // unique per occurrence
+	CalendarId     string                 `protobuf:"bytes,2,opt,name=calendar_id,json=calendarId,proto3" json:"calendar_id,omitempty"`
+	Uid            string                 `protobuf:"bytes,3,opt,name=uid,proto3" json:"uid,omitempty"` // iCalendar UID (shared by all occurrences)
+	Summary        string                 `protobuf:"bytes,4,opt,name=summary,proto3" json:"summary,omitempty"`
+	Location       string                 `protobuf:"bytes,5,opt,name=location,proto3" json:"location,omitempty"`
+	Description    string                 `protobuf:"bytes,6,opt,name=description,proto3" json:"description,omitempty"`
+	StartUnix      int64                  `protobuf:"varint,7,opt,name=start_unix,json=startUnix,proto3" json:"start_unix,omitempty"`
+	EndUnix        int64                  `protobuf:"varint,8,opt,name=end_unix,json=endUnix,proto3" json:"end_unix,omitempty"` // exclusive; all-day events end at local midnight
+	AllDay         bool                   `protobuf:"varint,9,opt,name=all_day,json=allDay,proto3" json:"all_day,omitempty"`
+	Recurring      bool                   `protobuf:"varint,10,opt,name=recurring,proto3" json:"recurring,omitempty"`
+	Organizer      string                 `protobuf:"bytes,11,opt,name=organizer,proto3" json:"organizer,omitempty"` // display name, or the address
+	Status         string                 `protobuf:"bytes,12,opt,name=status,proto3" json:"status,omitempty"`       // "CONFIRMED", "TENTATIVE" or ""
+	OrganizerEmail string                 `protobuf:"bytes,13,opt,name=organizer_email,json=organizerEmail,proto3" json:"organizer_email,omitempty"`
+	Attendees      []*Attendee            `protobuf:"bytes,14,rep,name=attendees,proto3" json:"attendees,omitempty"`
+	MyStatus       string                 `protobuf:"bytes,15,opt,name=my_status,json=myStatus,proto3" json:"my_status,omitempty"`        // the account's PARTSTAT ("NEEDS-ACTION", "ACCEPTED", ...); "" if not invited
+	CanRespond     bool                   `protobuf:"varint,16,opt,name=can_respond,json=canRespond,proto3" json:"can_respond,omitempty"` // invited, not the organizer, calendar writable
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *CalendarEvent) Reset() {
@@ -1637,6 +1641,162 @@ func (x *CalendarEvent) GetStatus() string {
 	return ""
 }
 
+func (x *CalendarEvent) GetOrganizerEmail() string {
+	if x != nil {
+		return x.OrganizerEmail
+	}
+	return ""
+}
+
+func (x *CalendarEvent) GetAttendees() []*Attendee {
+	if x != nil {
+		return x.Attendees
+	}
+	return nil
+}
+
+func (x *CalendarEvent) GetMyStatus() string {
+	if x != nil {
+		return x.MyStatus
+	}
+	return ""
+}
+
+func (x *CalendarEvent) GetCanRespond() bool {
+	if x != nil {
+		return x.CanRespond
+	}
+	return false
+}
+
+type Attendee struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Email         string                 `protobuf:"bytes,2,opt,name=email,proto3" json:"email,omitempty"`
+	Status        string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`          // PARTSTAT: NEEDS-ACTION | ACCEPTED | TENTATIVE | DECLINED | DELEGATED
+	Role          string                 `protobuf:"bytes,4,opt,name=role,proto3" json:"role,omitempty"`              // REQ-PARTICIPANT | OPT-PARTICIPANT | CHAIR | NON-PARTICIPANT
+	IsMe          bool                   `protobuf:"varint,5,opt,name=is_me,json=isMe,proto3" json:"is_me,omitempty"` // the calendar's own account
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Attendee) Reset() {
+	*x = Attendee{}
+	mi := &file_mailand_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Attendee) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Attendee) ProtoMessage() {}
+
+func (x *Attendee) ProtoReflect() protoreflect.Message {
+	mi := &file_mailand_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Attendee.ProtoReflect.Descriptor instead.
+func (*Attendee) Descriptor() ([]byte, []int) {
+	return file_mailand_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *Attendee) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *Attendee) GetEmail() string {
+	if x != nil {
+		return x.Email
+	}
+	return ""
+}
+
+func (x *Attendee) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *Attendee) GetRole() string {
+	if x != nil {
+		return x.Role
+	}
+	return ""
+}
+
+func (x *Attendee) GetIsMe() bool {
+	if x != nil {
+		return x.IsMe
+	}
+	return false
+}
+
+type RespondToEventRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	EventId       string                 `protobuf:"bytes,1,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"` // CalendarEvent.id
+	Status        string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`                  // "ACCEPTED" | "TENTATIVE" | "DECLINED"
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RespondToEventRequest) Reset() {
+	*x = RespondToEventRequest{}
+	mi := &file_mailand_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RespondToEventRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RespondToEventRequest) ProtoMessage() {}
+
+func (x *RespondToEventRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_mailand_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RespondToEventRequest.ProtoReflect.Descriptor instead.
+func (*RespondToEventRequest) Descriptor() ([]byte, []int) {
+	return file_mailand_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *RespondToEventRequest) GetEventId() string {
+	if x != nil {
+		return x.EventId
+	}
+	return ""
+}
+
+func (x *RespondToEventRequest) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
 type EventList struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Events        []*CalendarEvent       `protobuf:"bytes,1,rep,name=events,proto3" json:"events,omitempty"` // sorted by start
@@ -1646,7 +1806,7 @@ type EventList struct {
 
 func (x *EventList) Reset() {
 	*x = EventList{}
-	mi := &file_mailand_proto_msgTypes[23]
+	mi := &file_mailand_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1658,7 +1818,7 @@ func (x *EventList) String() string {
 func (*EventList) ProtoMessage() {}
 
 func (x *EventList) ProtoReflect() protoreflect.Message {
-	mi := &file_mailand_proto_msgTypes[23]
+	mi := &file_mailand_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1671,7 +1831,7 @@ func (x *EventList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EventList.ProtoReflect.Descriptor instead.
 func (*EventList) Descriptor() ([]byte, []int) {
-	return file_mailand_proto_rawDescGZIP(), []int{23}
+	return file_mailand_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *EventList) GetEvents() []*CalendarEvent {
@@ -1692,7 +1852,7 @@ type ListContactsRequest struct {
 
 func (x *ListContactsRequest) Reset() {
 	*x = ListContactsRequest{}
-	mi := &file_mailand_proto_msgTypes[24]
+	mi := &file_mailand_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1704,7 +1864,7 @@ func (x *ListContactsRequest) String() string {
 func (*ListContactsRequest) ProtoMessage() {}
 
 func (x *ListContactsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mailand_proto_msgTypes[24]
+	mi := &file_mailand_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1717,7 +1877,7 @@ func (x *ListContactsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListContactsRequest.ProtoReflect.Descriptor instead.
 func (*ListContactsRequest) Descriptor() ([]byte, []int) {
-	return file_mailand_proto_rawDescGZIP(), []int{24}
+	return file_mailand_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *ListContactsRequest) GetQuery() string {
@@ -1750,13 +1910,14 @@ type Contact struct {
 	Emails        []string               `protobuf:"bytes,5,rep,name=emails,proto3" json:"emails,omitempty"`
 	Phones        []string               `protobuf:"bytes,6,rep,name=phones,proto3" json:"phones,omitempty"`
 	Organization  string                 `protobuf:"bytes,7,opt,name=organization,proto3" json:"organization,omitempty"`
+	ReadOnly      bool                   `protobuf:"varint,8,opt,name=read_only,json=readOnly,proto3" json:"read_only,omitempty"` // its address book cannot be written
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Contact) Reset() {
 	*x = Contact{}
-	mi := &file_mailand_proto_msgTypes[25]
+	mi := &file_mailand_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1768,7 +1929,7 @@ func (x *Contact) String() string {
 func (*Contact) ProtoMessage() {}
 
 func (x *Contact) ProtoReflect() protoreflect.Message {
-	mi := &file_mailand_proto_msgTypes[25]
+	mi := &file_mailand_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1781,7 +1942,7 @@ func (x *Contact) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Contact.ProtoReflect.Descriptor instead.
 func (*Contact) Descriptor() ([]byte, []int) {
-	return file_mailand_proto_rawDescGZIP(), []int{25}
+	return file_mailand_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *Contact) GetId() string {
@@ -1833,6 +1994,193 @@ func (x *Contact) GetOrganization() string {
 	return ""
 }
 
+func (x *Contact) GetReadOnly() bool {
+	if x != nil {
+		return x.ReadOnly
+	}
+	return false
+}
+
+type SaveContactRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ContactId     string                 `protobuf:"bytes,1,opt,name=contact_id,json=contactId,proto3" json:"contact_id,omitempty"` // "" = new contact
+	AccountId     string                 `protobuf:"bytes,2,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"` // for new contacts: whose address book
+	FullName      string                 `protobuf:"bytes,3,opt,name=full_name,json=fullName,proto3" json:"full_name,omitempty"`
+	Emails        []string               `protobuf:"bytes,4,rep,name=emails,proto3" json:"emails,omitempty"`
+	Phones        []string               `protobuf:"bytes,5,rep,name=phones,proto3" json:"phones,omitempty"`
+	Organization  string                 `protobuf:"bytes,6,opt,name=organization,proto3" json:"organization,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SaveContactRequest) Reset() {
+	*x = SaveContactRequest{}
+	mi := &file_mailand_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SaveContactRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SaveContactRequest) ProtoMessage() {}
+
+func (x *SaveContactRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_mailand_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SaveContactRequest.ProtoReflect.Descriptor instead.
+func (*SaveContactRequest) Descriptor() ([]byte, []int) {
+	return file_mailand_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *SaveContactRequest) GetContactId() string {
+	if x != nil {
+		return x.ContactId
+	}
+	return ""
+}
+
+func (x *SaveContactRequest) GetAccountId() string {
+	if x != nil {
+		return x.AccountId
+	}
+	return ""
+}
+
+func (x *SaveContactRequest) GetFullName() string {
+	if x != nil {
+		return x.FullName
+	}
+	return ""
+}
+
+func (x *SaveContactRequest) GetEmails() []string {
+	if x != nil {
+		return x.Emails
+	}
+	return nil
+}
+
+func (x *SaveContactRequest) GetPhones() []string {
+	if x != nil {
+		return x.Phones
+	}
+	return nil
+}
+
+func (x *SaveContactRequest) GetOrganization() string {
+	if x != nil {
+		return x.Organization
+	}
+	return ""
+}
+
+type ContactRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ContactId     string                 `protobuf:"bytes,1,opt,name=contact_id,json=contactId,proto3" json:"contact_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ContactRequest) Reset() {
+	*x = ContactRequest{}
+	mi := &file_mailand_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ContactRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ContactRequest) ProtoMessage() {}
+
+func (x *ContactRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_mailand_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ContactRequest.ProtoReflect.Descriptor instead.
+func (*ContactRequest) Descriptor() ([]byte, []int) {
+	return file_mailand_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *ContactRequest) GetContactId() string {
+	if x != nil {
+		return x.ContactId
+	}
+	return ""
+}
+
+type AddressMessagesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Addresses     []string               `protobuf:"bytes,1,rep,name=addresses,proto3" json:"addresses,omitempty"`
+	Limit         uint32                 `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"` // default 20, max 200
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AddressMessagesRequest) Reset() {
+	*x = AddressMessagesRequest{}
+	mi := &file_mailand_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AddressMessagesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AddressMessagesRequest) ProtoMessage() {}
+
+func (x *AddressMessagesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_mailand_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AddressMessagesRequest.ProtoReflect.Descriptor instead.
+func (*AddressMessagesRequest) Descriptor() ([]byte, []int) {
+	return file_mailand_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *AddressMessagesRequest) GetAddresses() []string {
+	if x != nil {
+		return x.Addresses
+	}
+	return nil
+}
+
+func (x *AddressMessagesRequest) GetLimit() uint32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
 type ContactList struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Contacts      []*Contact             `protobuf:"bytes,1,rep,name=contacts,proto3" json:"contacts,omitempty"`
@@ -1842,7 +2190,7 @@ type ContactList struct {
 
 func (x *ContactList) Reset() {
 	*x = ContactList{}
-	mi := &file_mailand_proto_msgTypes[26]
+	mi := &file_mailand_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1854,7 +2202,7 @@ func (x *ContactList) String() string {
 func (*ContactList) ProtoMessage() {}
 
 func (x *ContactList) ProtoReflect() protoreflect.Message {
-	mi := &file_mailand_proto_msgTypes[26]
+	mi := &file_mailand_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1867,7 +2215,7 @@ func (x *ContactList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ContactList.ProtoReflect.Descriptor instead.
 func (*ContactList) Descriptor() ([]byte, []int) {
-	return file_mailand_proto_rawDescGZIP(), []int{26}
+	return file_mailand_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *ContactList) GetContacts() []*Contact {
@@ -2013,7 +2361,7 @@ const file_mailand_proto_rawDesc = "" +
 	"\n" +
 	"start_unix\x18\x01 \x01(\x03R\tstartUnix\x12\x19\n" +
 	"\bend_unix\x18\x02 \x01(\x03R\aendUnix\x12!\n" +
-	"\fcalendar_ids\x18\x03 \x03(\tR\vcalendarIds\"\xd1\x02\n" +
+	"\fcalendar_ids\x18\x03 \x03(\tR\vcalendarIds\"\xec\x03\n" +
 	"\rCalendarEvent\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1f\n" +
 	"\vcalendar_id\x18\x02 \x01(\tR\n" +
@@ -2029,14 +2377,28 @@ const file_mailand_proto_rawDesc = "" +
 	"\trecurring\x18\n" +
 	" \x01(\bR\trecurring\x12\x1c\n" +
 	"\torganizer\x18\v \x01(\tR\torganizer\x12\x16\n" +
-	"\x06status\x18\f \x01(\tR\x06status\">\n" +
+	"\x06status\x18\f \x01(\tR\x06status\x12'\n" +
+	"\x0forganizer_email\x18\r \x01(\tR\x0eorganizerEmail\x122\n" +
+	"\tattendees\x18\x0e \x03(\v2\x14.mailand.v1.AttendeeR\tattendees\x12\x1b\n" +
+	"\tmy_status\x18\x0f \x01(\tR\bmyStatus\x12\x1f\n" +
+	"\vcan_respond\x18\x10 \x01(\bR\n" +
+	"canRespond\"u\n" +
+	"\bAttendee\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
+	"\x05email\x18\x02 \x01(\tR\x05email\x12\x16\n" +
+	"\x06status\x18\x03 \x01(\tR\x06status\x12\x12\n" +
+	"\x04role\x18\x04 \x01(\tR\x04role\x12\x13\n" +
+	"\x05is_me\x18\x05 \x01(\bR\x04isMe\"J\n" +
+	"\x15RespondToEventRequest\x12\x19\n" +
+	"\bevent_id\x18\x01 \x01(\tR\aeventId\x12\x16\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\">\n" +
 	"\tEventList\x121\n" +
 	"\x06events\x18\x01 \x03(\v2\x19.mailand.v1.CalendarEventR\x06events\"`\n" +
 	"\x13ListContactsRequest\x12\x14\n" +
 	"\x05query\x18\x01 \x01(\tR\x05query\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\rR\x05limit\x12\x1d\n" +
 	"\n" +
-	"email_only\x18\x03 \x01(\bR\temailOnly\"\xd1\x01\n" +
+	"email_only\x18\x03 \x01(\bR\temailOnly\"\xee\x01\n" +
 	"\aContact\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -2045,9 +2407,25 @@ const file_mailand_proto_rawDesc = "" +
 	"\tfull_name\x18\x04 \x01(\tR\bfullName\x12\x16\n" +
 	"\x06emails\x18\x05 \x03(\tR\x06emails\x12\x16\n" +
 	"\x06phones\x18\x06 \x03(\tR\x06phones\x12\"\n" +
-	"\forganization\x18\a \x01(\tR\forganization\">\n" +
+	"\forganization\x18\a \x01(\tR\forganization\x12\x1b\n" +
+	"\tread_only\x18\b \x01(\bR\breadOnly\"\xc3\x01\n" +
+	"\x12SaveContactRequest\x12\x1d\n" +
+	"\n" +
+	"contact_id\x18\x01 \x01(\tR\tcontactId\x12\x1d\n" +
+	"\n" +
+	"account_id\x18\x02 \x01(\tR\taccountId\x12\x1b\n" +
+	"\tfull_name\x18\x03 \x01(\tR\bfullName\x12\x16\n" +
+	"\x06emails\x18\x04 \x03(\tR\x06emails\x12\x16\n" +
+	"\x06phones\x18\x05 \x03(\tR\x06phones\x12\"\n" +
+	"\forganization\x18\x06 \x01(\tR\forganization\"/\n" +
+	"\x0eContactRequest\x12\x1d\n" +
+	"\n" +
+	"contact_id\x18\x01 \x01(\tR\tcontactId\"L\n" +
+	"\x16AddressMessagesRequest\x12\x1c\n" +
+	"\taddresses\x18\x01 \x03(\tR\taddresses\x12\x14\n" +
+	"\x05limit\x18\x02 \x01(\rR\x05limit\">\n" +
 	"\vContactList\x12/\n" +
-	"\bcontacts\x18\x01 \x03(\v2\x13.mailand.v1.ContactR\bcontacts2\x9a\a\n" +
+	"\bcontacts\x18\x01 \x03(\v2\x13.mailand.v1.ContactR\bcontacts2\xc2\t\n" +
 	"\x0eMailandService\x12:\n" +
 	"\fListAccounts\x12\x11.mailand.v1.Empty\x1a\x17.mailand.v1.AccountList\x12A\n" +
 	"\vListFolders\x12\x1a.mailand.v1.AccountRequest\x1a\x16.mailand.v1.FolderList\x12N\n" +
@@ -2062,7 +2440,11 @@ const file_mailand_proto_rawDesc = "" +
 	"\rListCalendars\x12\x11.mailand.v1.Empty\x1a\x18.mailand.v1.CalendarList\x12B\n" +
 	"\n" +
 	"ListEvents\x12\x1d.mailand.v1.ListEventsRequest\x1a\x15.mailand.v1.EventList\x12H\n" +
-	"\fListContacts\x12\x1f.mailand.v1.ListContactsRequest\x1a\x17.mailand.v1.ContactList\x12?\n" +
+	"\fListContacts\x12\x1f.mailand.v1.ListContactsRequest\x1a\x17.mailand.v1.ContactList\x12B\n" +
+	"\vSaveContact\x12\x1e.mailand.v1.SaveContactRequest\x1a\x13.mailand.v1.Contact\x12>\n" +
+	"\rDeleteContact\x12\x1a.mailand.v1.ContactRequest\x1a\x11.mailand.v1.Empty\x12Z\n" +
+	"\x15ListMessagesByAddress\x12\".mailand.v1.AddressMessagesRequest\x1a\x1d.mailand.v1.MessageHeaderList\x12F\n" +
+	"\x0eRespondToEvent\x12!.mailand.v1.RespondToEventRequest\x1a\x11.mailand.v1.Empty\x12?\n" +
 	"\x0fSubscribeEvents\x12\x11.mailand.v1.Empty\x1a\x17.mailand.v1.DaemonEvent0\x01B$Z\"mailand/backend/internal/rpc/pb;pbb\x06proto3"
 
 var (
@@ -2078,36 +2460,41 @@ func file_mailand_proto_rawDescGZIP() []byte {
 }
 
 var file_mailand_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_mailand_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
+var file_mailand_proto_msgTypes = make([]protoimpl.MessageInfo, 32)
 var file_mailand_proto_goTypes = []any{
-	(DaemonEvent_Type)(0),       // 0: mailand.v1.DaemonEvent.Type
-	(*Empty)(nil),               // 1: mailand.v1.Empty
-	(*AccountRequest)(nil),      // 2: mailand.v1.AccountRequest
-	(*Account)(nil),             // 3: mailand.v1.Account
-	(*AccountList)(nil),         // 4: mailand.v1.AccountList
-	(*Folder)(nil),              // 5: mailand.v1.Folder
-	(*FolderList)(nil),          // 6: mailand.v1.FolderList
-	(*ListMessagesRequest)(nil), // 7: mailand.v1.ListMessagesRequest
-	(*MessageHeader)(nil),       // 8: mailand.v1.MessageHeader
-	(*MessageHeaderList)(nil),   // 9: mailand.v1.MessageHeaderList
-	(*MessageRequest)(nil),      // 10: mailand.v1.MessageRequest
-	(*AttachmentInfo)(nil),      // 11: mailand.v1.AttachmentInfo
-	(*AttachmentRequest)(nil),   // 12: mailand.v1.AttachmentRequest
-	(*AttachmentData)(nil),      // 13: mailand.v1.AttachmentData
-	(*MessageDetail)(nil),       // 14: mailand.v1.MessageDetail
-	(*SearchRequest)(nil),       // 15: mailand.v1.SearchRequest
-	(*SetFlagsRequest)(nil),     // 16: mailand.v1.SetFlagsRequest
-	(*SendMessageRequest)(nil),  // 17: mailand.v1.SendMessageRequest
-	(*SendMessageResponse)(nil), // 18: mailand.v1.SendMessageResponse
-	(*DaemonEvent)(nil),         // 19: mailand.v1.DaemonEvent
-	(*Calendar)(nil),            // 20: mailand.v1.Calendar
-	(*CalendarList)(nil),        // 21: mailand.v1.CalendarList
-	(*ListEventsRequest)(nil),   // 22: mailand.v1.ListEventsRequest
-	(*CalendarEvent)(nil),       // 23: mailand.v1.CalendarEvent
-	(*EventList)(nil),           // 24: mailand.v1.EventList
-	(*ListContactsRequest)(nil), // 25: mailand.v1.ListContactsRequest
-	(*Contact)(nil),             // 26: mailand.v1.Contact
-	(*ContactList)(nil),         // 27: mailand.v1.ContactList
+	(DaemonEvent_Type)(0),          // 0: mailand.v1.DaemonEvent.Type
+	(*Empty)(nil),                  // 1: mailand.v1.Empty
+	(*AccountRequest)(nil),         // 2: mailand.v1.AccountRequest
+	(*Account)(nil),                // 3: mailand.v1.Account
+	(*AccountList)(nil),            // 4: mailand.v1.AccountList
+	(*Folder)(nil),                 // 5: mailand.v1.Folder
+	(*FolderList)(nil),             // 6: mailand.v1.FolderList
+	(*ListMessagesRequest)(nil),    // 7: mailand.v1.ListMessagesRequest
+	(*MessageHeader)(nil),          // 8: mailand.v1.MessageHeader
+	(*MessageHeaderList)(nil),      // 9: mailand.v1.MessageHeaderList
+	(*MessageRequest)(nil),         // 10: mailand.v1.MessageRequest
+	(*AttachmentInfo)(nil),         // 11: mailand.v1.AttachmentInfo
+	(*AttachmentRequest)(nil),      // 12: mailand.v1.AttachmentRequest
+	(*AttachmentData)(nil),         // 13: mailand.v1.AttachmentData
+	(*MessageDetail)(nil),          // 14: mailand.v1.MessageDetail
+	(*SearchRequest)(nil),          // 15: mailand.v1.SearchRequest
+	(*SetFlagsRequest)(nil),        // 16: mailand.v1.SetFlagsRequest
+	(*SendMessageRequest)(nil),     // 17: mailand.v1.SendMessageRequest
+	(*SendMessageResponse)(nil),    // 18: mailand.v1.SendMessageResponse
+	(*DaemonEvent)(nil),            // 19: mailand.v1.DaemonEvent
+	(*Calendar)(nil),               // 20: mailand.v1.Calendar
+	(*CalendarList)(nil),           // 21: mailand.v1.CalendarList
+	(*ListEventsRequest)(nil),      // 22: mailand.v1.ListEventsRequest
+	(*CalendarEvent)(nil),          // 23: mailand.v1.CalendarEvent
+	(*Attendee)(nil),               // 24: mailand.v1.Attendee
+	(*RespondToEventRequest)(nil),  // 25: mailand.v1.RespondToEventRequest
+	(*EventList)(nil),              // 26: mailand.v1.EventList
+	(*ListContactsRequest)(nil),    // 27: mailand.v1.ListContactsRequest
+	(*Contact)(nil),                // 28: mailand.v1.Contact
+	(*SaveContactRequest)(nil),     // 29: mailand.v1.SaveContactRequest
+	(*ContactRequest)(nil),         // 30: mailand.v1.ContactRequest
+	(*AddressMessagesRequest)(nil), // 31: mailand.v1.AddressMessagesRequest
+	(*ContactList)(nil),            // 32: mailand.v1.ContactList
 }
 var file_mailand_proto_depIdxs = []int32{
 	3,  // 0: mailand.v1.AccountList.accounts:type_name -> mailand.v1.Account
@@ -2118,39 +2505,48 @@ var file_mailand_proto_depIdxs = []int32{
 	11, // 5: mailand.v1.MessageDetail.attachments:type_name -> mailand.v1.AttachmentInfo
 	0,  // 6: mailand.v1.DaemonEvent.type:type_name -> mailand.v1.DaemonEvent.Type
 	20, // 7: mailand.v1.CalendarList.calendars:type_name -> mailand.v1.Calendar
-	23, // 8: mailand.v1.EventList.events:type_name -> mailand.v1.CalendarEvent
-	26, // 9: mailand.v1.ContactList.contacts:type_name -> mailand.v1.Contact
-	1,  // 10: mailand.v1.MailandService.ListAccounts:input_type -> mailand.v1.Empty
-	2,  // 11: mailand.v1.MailandService.ListFolders:input_type -> mailand.v1.AccountRequest
-	7,  // 12: mailand.v1.MailandService.ListMessages:input_type -> mailand.v1.ListMessagesRequest
-	10, // 13: mailand.v1.MailandService.GetMessage:input_type -> mailand.v1.MessageRequest
-	12, // 14: mailand.v1.MailandService.GetAttachment:input_type -> mailand.v1.AttachmentRequest
-	15, // 15: mailand.v1.MailandService.SearchMessages:input_type -> mailand.v1.SearchRequest
-	16, // 16: mailand.v1.MailandService.SetMessageFlags:input_type -> mailand.v1.SetFlagsRequest
-	17, // 17: mailand.v1.MailandService.SendMessage:input_type -> mailand.v1.SendMessageRequest
-	2,  // 18: mailand.v1.MailandService.TriggerSync:input_type -> mailand.v1.AccountRequest
-	1,  // 19: mailand.v1.MailandService.ListCalendars:input_type -> mailand.v1.Empty
-	22, // 20: mailand.v1.MailandService.ListEvents:input_type -> mailand.v1.ListEventsRequest
-	25, // 21: mailand.v1.MailandService.ListContacts:input_type -> mailand.v1.ListContactsRequest
-	1,  // 22: mailand.v1.MailandService.SubscribeEvents:input_type -> mailand.v1.Empty
-	4,  // 23: mailand.v1.MailandService.ListAccounts:output_type -> mailand.v1.AccountList
-	6,  // 24: mailand.v1.MailandService.ListFolders:output_type -> mailand.v1.FolderList
-	9,  // 25: mailand.v1.MailandService.ListMessages:output_type -> mailand.v1.MessageHeaderList
-	14, // 26: mailand.v1.MailandService.GetMessage:output_type -> mailand.v1.MessageDetail
-	13, // 27: mailand.v1.MailandService.GetAttachment:output_type -> mailand.v1.AttachmentData
-	9,  // 28: mailand.v1.MailandService.SearchMessages:output_type -> mailand.v1.MessageHeaderList
-	1,  // 29: mailand.v1.MailandService.SetMessageFlags:output_type -> mailand.v1.Empty
-	18, // 30: mailand.v1.MailandService.SendMessage:output_type -> mailand.v1.SendMessageResponse
-	1,  // 31: mailand.v1.MailandService.TriggerSync:output_type -> mailand.v1.Empty
-	21, // 32: mailand.v1.MailandService.ListCalendars:output_type -> mailand.v1.CalendarList
-	24, // 33: mailand.v1.MailandService.ListEvents:output_type -> mailand.v1.EventList
-	27, // 34: mailand.v1.MailandService.ListContacts:output_type -> mailand.v1.ContactList
-	19, // 35: mailand.v1.MailandService.SubscribeEvents:output_type -> mailand.v1.DaemonEvent
-	23, // [23:36] is the sub-list for method output_type
-	10, // [10:23] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	24, // 8: mailand.v1.CalendarEvent.attendees:type_name -> mailand.v1.Attendee
+	23, // 9: mailand.v1.EventList.events:type_name -> mailand.v1.CalendarEvent
+	28, // 10: mailand.v1.ContactList.contacts:type_name -> mailand.v1.Contact
+	1,  // 11: mailand.v1.MailandService.ListAccounts:input_type -> mailand.v1.Empty
+	2,  // 12: mailand.v1.MailandService.ListFolders:input_type -> mailand.v1.AccountRequest
+	7,  // 13: mailand.v1.MailandService.ListMessages:input_type -> mailand.v1.ListMessagesRequest
+	10, // 14: mailand.v1.MailandService.GetMessage:input_type -> mailand.v1.MessageRequest
+	12, // 15: mailand.v1.MailandService.GetAttachment:input_type -> mailand.v1.AttachmentRequest
+	15, // 16: mailand.v1.MailandService.SearchMessages:input_type -> mailand.v1.SearchRequest
+	16, // 17: mailand.v1.MailandService.SetMessageFlags:input_type -> mailand.v1.SetFlagsRequest
+	17, // 18: mailand.v1.MailandService.SendMessage:input_type -> mailand.v1.SendMessageRequest
+	2,  // 19: mailand.v1.MailandService.TriggerSync:input_type -> mailand.v1.AccountRequest
+	1,  // 20: mailand.v1.MailandService.ListCalendars:input_type -> mailand.v1.Empty
+	22, // 21: mailand.v1.MailandService.ListEvents:input_type -> mailand.v1.ListEventsRequest
+	27, // 22: mailand.v1.MailandService.ListContacts:input_type -> mailand.v1.ListContactsRequest
+	29, // 23: mailand.v1.MailandService.SaveContact:input_type -> mailand.v1.SaveContactRequest
+	30, // 24: mailand.v1.MailandService.DeleteContact:input_type -> mailand.v1.ContactRequest
+	31, // 25: mailand.v1.MailandService.ListMessagesByAddress:input_type -> mailand.v1.AddressMessagesRequest
+	25, // 26: mailand.v1.MailandService.RespondToEvent:input_type -> mailand.v1.RespondToEventRequest
+	1,  // 27: mailand.v1.MailandService.SubscribeEvents:input_type -> mailand.v1.Empty
+	4,  // 28: mailand.v1.MailandService.ListAccounts:output_type -> mailand.v1.AccountList
+	6,  // 29: mailand.v1.MailandService.ListFolders:output_type -> mailand.v1.FolderList
+	9,  // 30: mailand.v1.MailandService.ListMessages:output_type -> mailand.v1.MessageHeaderList
+	14, // 31: mailand.v1.MailandService.GetMessage:output_type -> mailand.v1.MessageDetail
+	13, // 32: mailand.v1.MailandService.GetAttachment:output_type -> mailand.v1.AttachmentData
+	9,  // 33: mailand.v1.MailandService.SearchMessages:output_type -> mailand.v1.MessageHeaderList
+	1,  // 34: mailand.v1.MailandService.SetMessageFlags:output_type -> mailand.v1.Empty
+	18, // 35: mailand.v1.MailandService.SendMessage:output_type -> mailand.v1.SendMessageResponse
+	1,  // 36: mailand.v1.MailandService.TriggerSync:output_type -> mailand.v1.Empty
+	21, // 37: mailand.v1.MailandService.ListCalendars:output_type -> mailand.v1.CalendarList
+	26, // 38: mailand.v1.MailandService.ListEvents:output_type -> mailand.v1.EventList
+	32, // 39: mailand.v1.MailandService.ListContacts:output_type -> mailand.v1.ContactList
+	28, // 40: mailand.v1.MailandService.SaveContact:output_type -> mailand.v1.Contact
+	1,  // 41: mailand.v1.MailandService.DeleteContact:output_type -> mailand.v1.Empty
+	9,  // 42: mailand.v1.MailandService.ListMessagesByAddress:output_type -> mailand.v1.MessageHeaderList
+	1,  // 43: mailand.v1.MailandService.RespondToEvent:output_type -> mailand.v1.Empty
+	19, // 44: mailand.v1.MailandService.SubscribeEvents:output_type -> mailand.v1.DaemonEvent
+	28, // [28:45] is the sub-list for method output_type
+	11, // [11:28] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_mailand_proto_init() }
@@ -2165,7 +2561,7 @@ func file_mailand_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_mailand_proto_rawDesc), len(file_mailand_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   27,
+			NumMessages:   32,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

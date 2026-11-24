@@ -85,6 +85,12 @@ public:
 
     void listCalendars(QObject *ctx, Done<mailand::v1::CalendarList> done);
     void listEvents(qint64 startUnix, qint64 endUnix, QObject *ctx, Done<mailand::v1::EventList> done);
+    void respondToEvent(const QString &eventId, const QString &status, QObject *ctx,
+                        Done<mailand::v1::Empty> done);
+    void saveContact(mailand::v1::SaveContactRequest req, QObject *ctx, Done<mailand::v1::Contact> done);
+    void deleteContact(const QString &contactId, QObject *ctx, Done<mailand::v1::Empty> done);
+    void listMessagesByAddress(const QStringList &addresses, quint32 limit, QObject *ctx,
+                               Done<mailand::v1::MessageHeaderList> done);
     void listContacts(const QString &query, quint32 limit, bool emailOnly, QObject *ctx,
                       Done<mailand::v1::ContactList> done);
 

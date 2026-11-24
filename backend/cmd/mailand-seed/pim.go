@@ -48,7 +48,7 @@ func seedPIM(ctx context.Context, st *store.Store, now time.Time) (ncal, nev, nc
 		{"Work", "standup", "SUMMARY:Daily standup\nLOCATION:Meet\nDTSTART:" + dt(monday.Add(9*time.Hour+30*time.Minute)) +
 			"\nDTEND:" + dt(monday.Add(9*time.Hour+45*time.Minute)) + "\nRRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR\nEXDATE:" +
 			dt(monday.AddDate(0, 0, 9).Add(9*time.Hour+30*time.Minute))},
-		{"Work", "review", "SUMMARY:Sprint review\nDESCRIPTION:Demo of the calendar view.\\nBring coffee.\nORGANIZER;CN=Tomislav Božić:mailto:tomislav@example.hr\nDTSTART:" +
+		{"Work", "review", "SUMMARY:Sprint review\nDESCRIPTION:Demo of the calendar view.\\nBring coffee.\nORGANIZER;CN=Tomislav Božić:mailto:tomislav@example.org\nDTSTART:" +
 			dt(at(2, 14, 0)) + "\nDTEND:" + dt(at(2, 15, 30))},
 		{"Work", "1on1", "SUMMARY:1:1 with Željka\nDTSTART:" + dt(at(0, 11, 0)) + "\nDTEND:" + dt(at(0, 11, 30)) + "\nRRULE:FREQ=WEEKLY;INTERVAL=2"},
 		{"Work", "offsite", "SUMMARY:Team offsite\nLOCATION:Rijeka\nDTSTART;VALUE=DATE:" + date(day(8)) + "\nDTEND;VALUE=DATE:" + date(day(11))},
@@ -59,6 +59,19 @@ func seedPIM(ctx context.Context, st *store.Store, now time.Time) (ncal, nev, nc
 		{"Personal", "flight", "SUMMARY:Let ZAG → LHR\nLOCATION:Zračna luka Franjo Tuđman\nSTATUS:TENTATIVE\nDTSTART:" + dt(at(5, 7, 10)) + "\nDTEND:" + dt(at(5, 9, 25))},
 		{"Obitelj", "bday", "SUMMARY:Rođendan – Ana\nDTSTART;VALUE=DATE:" + date(day(1).AddDate(-30, 0, 0)) + "\nRRULE:FREQ=YEARLY"},
 		{"Obitelj", "dinner", "SUMMARY:Nedjeljni ručak\nDTSTART:" + dt(at(int((7-now.Weekday())%7), 13, 0)) + "\nDTEND:" + dt(at(int((7-now.Weekday())%7), 15, 0)) + "\nRRULE:FREQ=WEEKLY"},
+		{"Personal", "invite-pending", "SUMMARY:Q1 planning\nLOCATION:Meet – https://meet.example.com/abc\nDESCRIPTION:Agenda:\\n1. Roadmap\\n2. Hiring\nDTSTART:" + dt(at(1, 10, 0)) + "\nDTEND:" + dt(at(1, 11, 0)) +
+			"\nORGANIZER;CN=Tomislav Božić:mailto:tomislav@example.org" +
+			"\nATTENDEE;CN=Tomislav Božić;ROLE=CHAIR;PARTSTAT=ACCEPTED:mailto:tomislav@example.org" +
+			"\nATTENDEE;CN=Demo Korisnik;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:demo@example.com" +
+			"\nATTENDEE;CN=Željka Vuković;PARTSTAT=TENTATIVE:mailto:zeljka.vukovic@example.hr" +
+			"\nATTENDEE;CN=Marko Marić;ROLE=OPT-PARTICIPANT;PARTSTAT=DECLINED:mailto:marko.maric@example.hr"},
+		{"Personal", "invite-weekly", "SUMMARY:Book club\nDTSTART:" + dt(at(-int((now.Weekday()+4)%7), 19, 0)) + "\nDTEND:" + dt(at(-int((now.Weekday()+4)%7), 20, 30)) +
+			"\nRRULE:FREQ=WEEKLY\nORGANIZER;CN=Ana Horvat:mailto:ana.horvat@example.hr" +
+			"\nATTENDEE;CN=Ana Horvat;PARTSTAT=ACCEPTED:mailto:ana.horvat@example.hr" +
+			"\nATTENDEE;CN=Demo Korisnik;PARTSTAT=ACCEPTED:mailto:demo@example.com"},
+		{"Personal", "invite-declined", "SUMMARY:Vendor demo\nDTSTART:" + dt(at(2, 16, 0)) + "\nDTEND:" + dt(at(2, 16, 30)) +
+			"\nORGANIZER;CN=Dario Knežević:mailto:dario@vendor.example" +
+			"\nATTENDEE;CN=Demo Korisnik;PARTSTAT=DECLINED:mailto:demo@example.com"},
 		{"Obitelj", "late", "SUMMARY:Koncert\nDTSTART:" + dt(at(4, 20, 0)) + "\nDTEND:" + dt(at(4, 23, 0))},
 	}
 	byCal := map[string][]store.CalendarObject{}
@@ -95,7 +108,7 @@ func seedPIM(ctx context.Context, st *store.Store, now time.Time) (ncal, nev, nc
 		emails, phones     []string
 	}{
 		{"gmail", "Ana Horvat", "", []string{"ana.horvat@example.hr"}, []string{"+385 91 123 4567"}},
-		{"gmail", "Tomislav Božić", "Posao d.o.o.", []string{"tomislav@example.hr", "tbozic@posao.example"}, []string{"+385 98 765 432"}},
+		{"gmail", "Tomislav Božić", "Posao d.o.o.", []string{"tomislav@example.org", "tbozic@posao.example"}, []string{"+385 98 765 432"}},
 		{"gmail", "Željka Vuković", "", []string{"zeljka.vukovic@example.hr"}, nil},
 		{"gmail", "James Carter", "", []string{"james.carter@example.com"}, []string{"+44 20 7946 0958"}},
 		{"gmail", "Marko Marić", "", []string{"marko.maric@example.hr"}, []string{"+385 95 555 0101"}},
@@ -103,7 +116,10 @@ func seedPIM(ctx context.Context, st *store.Store, now time.Time) (ncal, nev, nc
 		{"gmail", "Luka Novak", "", []string{"luka.novak@example.si"}, nil},
 		{"gmail", "Petra Jurić", "", nil, []string{"+385 99 222 3344"}},
 		{"gmail", "HT Račun", "Hrvatski Telekom", []string{"racun@ht.example.hr"}, nil},
-		{"gmail", "Booking Demo", "", []string{"noreply@booking.example"}, nil},
+		{"gmail", "Booking Demo", "", []string{"reservations@booking.example.com"}, nil},
+		{"gmail", "Sarah Miller", "", []string{"sarah.miller@example.com"}, []string{"+1 555 0100"}},
+		{"gmail", "Marko Jurić", "", []string{"marko.juric@example.com"}, nil},
+		{"gmail", "Petra Kovačević", "Firma d.o.o.", []string{"petra.kovacevic@firma.example.hr"}, []string{"+385 1 2345 678"}},
 		{"work", "Nikola Babić", "Work Inc.", []string{"nikola.babic@work.example"}, []string{"+385 1 6000 200"}},
 		{"work", "Sara Perić", "Work Inc.", []string{"sara.peric@work.example"}, nil},
 		{"work", "Ops On-call", "Work Inc.", []string{"oncall@work.example"}, []string{"+385 1 6000 999"}},

@@ -12,13 +12,40 @@ Rectangle {
     property var current: ({})
     color: Theme.bg
 
-    function updateCurrent() { current = list.currentIndex >= 0 ? contacts.get(list.currentIndex) : ({}) }
+    function updateCurrent() {
+        current = list.currentIndex >= 0 ? contacts.get(list.currentIndex) : ({})
+        contacts.loadRecentMail(current.emails ?? [])
+    }
     Connections {
         target: root.contacts
-        function onModelReset() { root.updateCurrent() }
+        function onModelReset() {
+            if (root.pendingSelect.length > 0) {
+                const i = root.contacts.indexOf(root.pendingSelect)
+                if (i >= 0) {
+                    root.pendingSelect = ""
+                    list.currentIndex = i
+                }
+            }
+            root.updateCurrent()
+        }
+        function onContactSaved(id: string) {
+            root.pendingSelect = id
+            const i = root.contacts.indexOf(id)
+            if (i >= 0)
+                list.currentIndex = i
+        }
     }
 
     signal composeTo(string accountId, string address)
+    signal newContact()
+    signal editContact(var contact)
+    signal openMessage(string messageId)
+
+    property string pendingSelect // contact to select once the list reloads (after a save)
+    function editCurrent() {
+        if (root.current.contactId && !root.current.readOnly)
+            root.editContact(root.current)
+    }
 
     function next() { if (list.count > 0) list.currentIndex = Math.min(list.currentIndex + 1, list.count - 1) }
     function previous() { if (list.count > 0) list.currentIndex = Math.max(list.currentIndex - 1, 0) }
@@ -40,10 +67,13 @@ Rectangle {
             Layout.fillHeight: true
             spacing: 0
 
+            RowLayout {
+            Layout.fillWidth: true
+            Layout.margins: Theme.s2
+            spacing: Theme.s2
             TextField {
                 id: search
                 Layout.fillWidth: true
-                Layout.margins: Theme.s2
                 placeholderText: "Search contacts  (/)"
                 color: Theme.text
                 placeholderTextColor: Theme.textFaint
@@ -61,6 +91,19 @@ Rectangle {
                 Keys.onDownPressed: { root.next(); list.forceActiveFocus() }
                 Keys.onEscapePressed: { if (text.length > 0) text = ""; else list.forceActiveFocus() }
                 Keys.onReturnPressed: list.forceActiveFocus()
+            }
+            Button {
+                id: addBtn
+                text: "+ New"
+                focusPolicy: Qt.NoFocus
+                implicitHeight: search.implicitHeight
+                onClicked: root.newContact()
+                ToolTip.text: "New contact (n)"
+                ToolTip.visible: hovered
+                ToolTip.delay: 400
+                background: Rectangle { radius: Theme.radius; color: addBtn.down ? Theme.selection : addBtn.hovered ? Theme.surfaceAlt : Theme.surface; border.color: Theme.border }
+                contentItem: Label { text: addBtn.text; color: Theme.text; font.pixelSize: Theme.fontSmall; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter; leftPadding: Theme.s2; rightPadding: Theme.s2 }
+            }
             }
 
             ListView {
@@ -204,9 +247,11 @@ Rectangle {
                     }
                 }
 
+                RowLayout {
+                Layout.topMargin: Theme.s3
+                spacing: Theme.s2
                 Button {
                     id: write
-                    Layout.topMargin: Theme.s3
                     visible: (root.current.address ?? "").length > 0
                     text: "Write email  (c)"
                     focusPolicy: Qt.NoFocus
@@ -223,6 +268,74 @@ Rectangle {
                         font.bold: true
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
+                    }
+                }
+                Button {
+                    id: editBtn
+                    visible: !(root.current.readOnly ?? true)
+                    text: "Edit  (e)"
+                    focusPolicy: Qt.NoFocus
+                    leftPadding: Theme.s4
+                    rightPadding: Theme.s4
+                    topPadding: Theme.s2
+                    bottomPadding: Theme.s2
+                    onClicked: root.editCurrent()
+                    background: Rectangle { radius: Theme.radius; color: editBtn.down ? Theme.selection : editBtn.hovered ? Theme.surfaceAlt : Theme.surface; border.color: Theme.border }
+                    contentItem: Label { text: editBtn.text; color: Theme.text; font.pixelSize: Theme.fontBody; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                }
+                }
+
+                Label {
+                    Layout.topMargin: Theme.s4
+                    visible: root.contacts.recentMail.length > 0
+                    text: "Recent mail"
+                    color: Theme.textFaint
+                    font.pixelSize: Theme.fontSmall
+                }
+                Repeater {
+                    model: root.contacts.recentMail
+                    delegate: Rectangle {
+                        id: mailRow
+                        required property var modelData
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 44
+                        radius: Theme.radius
+                        color: rowHover.hovered ? Theme.surface : "transparent"
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: Theme.s2
+                            anchors.rightMargin: Theme.s2
+                            spacing: Theme.s3
+                            Rectangle {
+                                Layout.preferredWidth: 6; Layout.preferredHeight: 6; radius: 3
+                                color: mailRow.modelData.isRead ? "transparent" : Theme.unreadDot
+                            }
+                            Column {
+                                Layout.fillWidth: true
+                                Label {
+                                    width: parent.width
+                                    text: mailRow.modelData.subject
+                                    color: Theme.text
+                                    font.pixelSize: Theme.fontBody
+                                    font.bold: !mailRow.modelData.isRead
+                                    elide: Text.ElideRight
+                                }
+                                Label {
+                                    width: parent.width
+                                    text: mailRow.modelData.sender
+                                    color: Theme.textMuted
+                                    font.pixelSize: Theme.fontSmall
+                                    elide: Text.ElideRight
+                                }
+                            }
+                            Label {
+                                text: mailRow.modelData.dateText
+                                color: Theme.textFaint
+                                font.pixelSize: Theme.fontSmall
+                            }
+                        }
+                        HoverHandler { id: rowHover; cursorShape: Qt.PointingHandCursor }
+                        TapHandler { onTapped: root.openMessage(mailRow.modelData.id) }
                     }
                 }
             }

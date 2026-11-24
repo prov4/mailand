@@ -83,6 +83,8 @@ func run(log *slog.Logger, socket string, offline bool) error {
 	// syncer == nil to report FailedPrecondition when there are no accounts.
 	var syncer rpc.Syncer
 	var sender rpc.Sender
+	var responder rpc.Responder
+	var contacts rpc.ContactEditor
 	var mgr *mail.Manager
 	var davMgr *dav.Manager
 	if offline {
@@ -90,6 +92,8 @@ func run(log *slog.Logger, socket string, offline bool) error {
 		sender = send.NewOfflineSender(st, config.BlobDir(), func(accountID, folderID string) {
 			broker.Publish(&pb.DaemonEvent{Type: pb.DaemonEvent_NEW_MESSAGES, AccountId: accountID, FolderId: folderID, Detail: "1"})
 		})
+		responder = rpc.NewOfflineResponder(st, broker)
+		contacts = rpc.NewOfflineContacts(st, broker)
 		log.Warn("offline mode: no IMAP, flag changes are local only")
 	} else if len(cfg.Accounts) > 0 {
 		mgr = mail.NewManager(cfg, st, config.BlobDir(), func(ev mail.Event) {
@@ -100,12 +104,16 @@ func run(log *slog.Logger, socket string, offline bool) error {
 		}
 		davMgr = dav.NewManager(cfg, st, func(ev dav.Event) { broker.Publish(davToPB(ev)) }, log)
 		davMgr.Start(ctx)
+		responder = davMgr
+		contacts = davMgr
 		syncer = syncers{mgr, davMgr}
 		sender = send.NewSender(ctx, cfg, st, mgr.TriggerSync, log)
 	}
 
 	srv := rpc.NewServer(st, syncer, broker, log)
 	srv.SetSender(sender)
+	srv.SetResponder(responder)
+	srv.SetContactEditor(contacts)
 	g := srv.Register()
 
 	errc := make(chan error, 1)

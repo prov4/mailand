@@ -21,6 +21,9 @@ class ContactsModel : public QAbstractListModel
     Q_PROPERTY(int minQueryLength READ minQueryLength WRITE setMinQueryLength NOTIFY minQueryLengthChanged FINAL)
     Q_PROPERTY(int count READ count NOTIFY countChanged FINAL)
     Q_PROPERTY(bool loading READ loading NOTIFY loadingChanged FINAL)
+    // Recent mail with the contact given to loadRecentMail (maps: id, subject, sender, dateText, isRead).
+    Q_PROPERTY(QVariantList recentMail READ recentMail NOTIFY recentMailChanged FINAL)
+    Q_PROPERTY(bool saving READ saving NOTIFY savingChanged FINAL)
 
 public:
     enum Roles {
@@ -34,6 +37,7 @@ public:
         AccountIdRole,
         AddressRole, // "Name <email>" ready for a To field
         ColorRole,   // stable avatar color
+        ReadOnlyRole,
     };
 
     explicit ContactsModel(QObject *parent = nullptr);
@@ -54,7 +58,17 @@ public:
     bool loading() const { return m_pending > 0; }
 
     Q_INVOKABLE QVariantMap get(int row) const;
+    Q_INVOKABLE int indexOf(const QString &contactId) const;
     Q_INVOKABLE void refresh();
+
+    // Create (no "contactId") or update a contact from a map with contactId,
+    // accountId, fullName, organization, emails, phones (string lists).
+    // Emits contactSaved(id) or editFailed(message).
+    Q_INVOKABLE void save(const QVariantMap &fields);
+    Q_INVOKABLE void remove(const QString &contactId);
+    Q_INVOKABLE void loadRecentMail(const QStringList &emails);
+    QVariantList recentMail() const { return m_recent; }
+    bool saving() const { return m_saving; }
 
     // "Ana Horvat <ana@example.hr>"; quotes names that need it.
     static QString formatAddress(const QString &name, const QString &email);
@@ -66,12 +80,22 @@ signals:
     void minQueryLengthChanged();
     void countChanged();
     void loadingChanged();
+    void recentMailChanged();
+    void savingChanged();
+    void contactSaved(const QString &contactId);
+    void contactDeleted(const QString &contactId);
+    void editFailed(const QString &message);
 
 private:
     struct Row {
         QString id, name, email, org, accountId;
         QStringList emails, phones;
+        bool readOnly = false;
     };
+    void setSaving(bool s);
+    QVariantList m_recent;
+    int m_recentGen = 0;
+    bool m_saving = false;
     void apply(std::vector<Row> rows);
 
     QString m_query;

@@ -16,7 +16,8 @@ import (
 // Instance is one occurrence of an event.
 type Instance struct {
 	UID, Summary, Location, Description string
-	Status, Organizer                   string
+	Status, Organizer, OrganizerEmail   string
+	Attendees                           []Attendee
 	Start, End                          time.Time
 	AllDay, Recurring                   bool
 }
@@ -220,6 +221,7 @@ func instance(ev ical.Event, start, end time.Time, allDay, recurring bool) Insta
 		UID: text(ev, ical.PropUID), Summary: text(ev, ical.PropSummary),
 		Location: text(ev, ical.PropLocation), Description: text(ev, ical.PropDescription),
 		Status: strings.ToUpper(text(ev, ical.PropStatus)), Organizer: organizer(ev),
+		OrganizerEmail: organizerEmail(ev), Attendees: attendees(ev),
 		Start: start, End: end, AllDay: allDay, Recurring: recurring,
 	}
 }

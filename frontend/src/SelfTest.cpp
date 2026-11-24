@@ -48,6 +48,10 @@ void settle(int ms)
 int runSelfTest(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
+    // Checks that change server data (send mail, answer an invitation, edit
+    // contacts) run only with --write, meant for `mailand-daemon -offline`:
+    // against a real account they would notify organizers and touch real contacts.
+    const bool writes = app.arguments().contains(QStringLiteral("--write"));
     g_clock.start();
     QTextStream out(stdout);
     int failures = 0;
@@ -194,7 +198,9 @@ int runSelfTest(int argc, char **argv)
         for (int i = 0; i < folders.count(); ++i)
             if (folders.data(folders.index(i), FolderModel::DisplayNameRole).toString() == "Sent")
                 sentRow = i;
-        if (check(sentRow >= 0, "Sent folder present")) {
+        if (!writes)
+            out << "skip  sending: needs --write (offline daemon only; a real daemon would send mail)" << Qt::endl;
+        else if (check(sentRow >= 0, "Sent folder present")) {
             MessageModel sentModel;
             sentModel.setAccountId(accountId);
             sentModel.setFolderId(folders.folderIdAt(sentRow));
@@ -285,6 +291,41 @@ int runSelfTest(int argc, char **argv)
             hidden += int(cal.eventsOn(cal.gridDate(i)).size());
         cal.toggleCalendar(firstCal);
         check(hidden <= before, QStringLiteral("calendar: hide/show a calendar (%1 -> %2)").arg(before).arg(hidden));
+
+        // Invitations: find one we can answer, answer it, see it stick after the reload.
+        QString inviteId, inviteWas;
+        if (!writes)
+            out << "skip  invitations: answering needs --write (offline daemon only)" << Qt::endl;
+        else
+        for (int i = 0; i < 42 && inviteId.isEmpty(); ++i)
+            for (const QVariant &v : cal.eventsOn(cal.gridDate(i)))
+                if (v.toMap().value("canRespond").toBool()) {
+                    inviteId = v.toMap().value("id").toString();
+                    inviteWas = v.toMap().value("myStatus").toString();
+                    break;
+                }
+        if (writes && inviteId.isEmpty()) {
+            out << "skip  invitations: none in this month" << Qt::endl;
+        } else if (writes) {
+            const QVariantMap inv = cal.eventById(inviteId);
+            check(!inv.value("attendees").toList().isEmpty() && !inv.value("organizerEmail").toString().isEmpty(),
+                  QStringLiteral("invitation: %1 attendees, organizer %2")
+                      .arg(inv.value("attendees").toList().size()).arg(inv.value("organizerEmail").toString()));
+            const QString answer = inviteWas == "TENTATIVE" ? QStringLiteral("ACCEPTED") : QStringLiteral("TENTATIVE");
+            const int rev = cal.revision();
+            cal.respond(inviteId, answer);
+            check(cal.eventById(inviteId).value("myStatus").toString() == answer, "invitation: optimistic answer " + answer);
+            waitUntil([&] { return cal.revision() > rev + 1 && !cal.loading(); }); // reload after CALENDARS_UPDATED
+            settle(400);
+            waitUntil([&] { return !cal.loading(); });
+            bool me = false;
+            for (const QVariant &a : cal.eventById(inviteId).value("attendees").toList())
+                me = me || (a.toMap().value("isMe").toBool() && a.toMap().value("status").toString() == answer);
+            check(cal.eventById(inviteId).value("myStatus").toString() == answer && me,
+                  "invitation: answer stored by the daemon");
+            if (!inviteWas.isEmpty() && inviteWas != "NEEDS-ACTION")
+                cal.respond(inviteId, inviteWas); // leave a real calendar as it was
+        }
     }
 
     // ---- contacts ----
@@ -330,6 +371,64 @@ int runSelfTest(int argc, char **argv)
         Composer to;
         to.initNewTo(QString(), QStringLiteral("Ana <a@x.hr>"));
         check(to.to() == "Ana <a@x.hr>" && !to.dirty(), "initNewTo: prefilled and not dirty");
+
+        // Recent mail with a contact: the first one that has any.
+        people.setQuery(QString());
+        settle(200);
+        waitUntil([&] { return !people.loading(); });
+        int withMail = -1;
+        for (int i = 0; i < people.count() && withMail < 0 && g_clock.elapsed() < 8000; ++i) {
+            people.loadRecentMail(people.get(i).value("emails").toStringList());
+            settle(80);
+            if (!people.recentMail().isEmpty())
+                withMail = i;
+        }
+        check(withMail >= 0, withMail >= 0 ? QStringLiteral("contacts: recent mail with %1 (%2 messages)")
+                                                 .arg(people.get(withMail).value("fullName").toString())
+                                                 .arg(people.recentMail().size())
+                                           : QStringLiteral("contacts: recent mail found for no contact"));
+
+        // Create, edit and delete a contact.
+        if (!writes)
+            out << "skip  contact editing: needs --write (offline daemon only)" << Qt::endl;
+        const QString marker = QStringLiteral("Selftest %1").arg(QDateTime::currentMSecsSinceEpoch());
+        QString savedId, failure;
+        int deleted = 0;
+        QObject::connect(&people, &ContactsModel::contactSaved, &app, [&](const QString &id) { savedId = id; });
+        QObject::connect(&people, &ContactsModel::contactDeleted, &app, [&] { ++deleted; });
+        QObject::connect(&people, &ContactsModel::editFailed, &app, [&](const QString &m) { failure = m; });
+        if (writes)
+        people.save({{"accountId", accountId}, {"fullName", marker},
+                     {"emails", QStringList{"selftest@example.org"}}, {"phones", QStringList{"+385 1 000"}}});
+        waitUntil([&] { return !people.saving(); });
+        if (writes && check(!savedId.isEmpty(), "contacts: create" + (failure.isEmpty() ? QString() : " (" + failure + ")"))) {
+            people.setQuery(marker);
+            settle(200);
+            waitUntil([&] { return !people.loading() && people.count() > 0; });
+            check(people.count() == 1 && people.get(0).value("phones").toStringList() == QStringList{"+385 1 000"},
+                  "contacts: created contact is searchable");
+            const QString id = savedId;
+            savedId.clear();
+            people.save({{"contactId", id}, {"fullName", marker + " edited"}, {"organization", "Acme"},
+                         {"emails", QStringList{"selftest@example.org", "second@example.org"}}});
+            waitUntil([&] { return !people.saving(); });
+            settle(200);
+            waitUntil([&] { return !people.loading(); });
+            const int row = people.indexOf(id);
+            check(savedId == id && row >= 0 && people.get(row).value("organization").toString() == "Acme"
+                      && people.get(row).value("emails").toStringList().size() == 2
+                      && people.get(row).value("phones").toStringList().isEmpty(),
+                  "contacts: edit (organization added, phone removed)");
+            failure.clear();
+            people.save({{"contactId", id}, {"fullName", "x"}, {"emails", QStringList{"not an address"}}});
+            waitUntil([&] { return !people.saving(); });
+            check(!failure.isEmpty(), "contacts: invalid email refused: " + failure);
+            people.remove(id);
+            waitUntil([&] { return !people.saving(); });
+            settle(200);
+            waitUntil([&] { return !people.loading(); });
+            check(deleted == 1 && people.indexOf(id) < 0, "contacts: delete");
+        }
     }
 
     if (!errors.isEmpty())

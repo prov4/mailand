@@ -10,6 +10,16 @@ Rectangle {
     required property CalendarModel calendar
     color: Theme.bg
 
+    signal eventActivated(string eventId)
+
+    // Enter: open the selected day's first event.
+    function openFirst() {
+        if (selectedEvents.length > 0)
+            eventActivated(selectedEvents[0].id)
+    }
+    function pending(ev: var): bool { return ev.canRespond && (ev.myStatus === "NEEDS-ACTION" || ev.myStatus === "") }
+    function declined(ev: var): bool { return ev.myStatus === "DECLINED" }
+
     readonly property var selectedEvents: calendar.eventsOn(calendar.selectedDate, calendar.revision)
 
     component NavButton: Button {
@@ -141,10 +151,16 @@ Rectangle {
                                     id: chip
                                     required property var modelData
                                     readonly property bool bar: chip.modelData.allDay || chip.modelData.multiDay
+                                    readonly property bool pending: root.pending(chip.modelData)
                                     width: parent.width
                                     height: 16
                                     radius: 3
-                                    color: chip.bar ? Qt.alpha(chip.modelData.color, 0.85) : "transparent"
+                                    opacity: root.declined(chip.modelData) ? 0.45 : 1
+                                    color: chip.bar && !chip.pending ? Qt.alpha(chip.modelData.color, 0.85)
+                                         : chipHover.hovered ? Theme.surfaceAlt : "transparent"
+                                    // Unanswered invitations are outlined.
+                                    border.color: chip.pending ? chip.modelData.color : "transparent"
+                                    border.width: 1
                                     Row {
                                         anchors.fill: parent
                                         anchors.leftMargin: 4
@@ -159,9 +175,17 @@ Rectangle {
                                             width: parent.width - 14
                                             anchors.verticalCenter: parent.verticalCenter
                                             text: (chip.bar ? "" : chip.modelData.startText + " ") + chip.modelData.summary
-                                            color: chip.bar ? Theme.accentText : cell.inMonth ? Theme.text : Theme.textMuted
+                                            color: chip.bar && !chip.pending ? Theme.accentText : cell.inMonth ? Theme.text : Theme.textMuted
                                             font.pixelSize: 11
+                                            font.strikeout: root.declined(chip.modelData)
                                             elide: Text.ElideRight
+                                        }
+                                    }
+                                    HoverHandler { id: chipHover; cursorShape: Qt.PointingHandCursor }
+                                    TapHandler {
+                                        onTapped: {
+                                            root.calendar.select(cell.day)
+                                            root.eventActivated(chip.modelData.id)
                                         }
                                     }
                                 }
@@ -221,8 +245,11 @@ Rectangle {
                     width: ListView.view.width
                     height: body.implicitHeight + 2 * Theme.s3
                     radius: Theme.radius
-                    color: Theme.surface
-                    border.color: Theme.border
+                    color: cardHover.hovered ? Theme.surfaceAlt : Theme.surface
+                    border.color: root.pending(card.modelData) ? card.modelData.color : Theme.border
+                    opacity: root.declined(card.modelData) ? 0.6 : 1
+                    HoverHandler { id: cardHover; cursorShape: Qt.PointingHandCursor }
+                    TapHandler { onTapped: root.eventActivated(card.modelData.id) }
 
                     Rectangle {
                         width: 4
@@ -237,13 +264,35 @@ Rectangle {
                         id: body
                         anchors { left: parent.left; right: parent.right; top: parent.top; margins: Theme.s3; leftMargin: Theme.s5 }
                         spacing: 2
-                        Label {
+                        RowLayout {
                             Layout.fillWidth: true
-                            text: card.modelData.summary
-                            color: Theme.text
-                            font.pixelSize: Theme.fontBody
-                            font.bold: true
-                            wrapMode: Text.Wrap
+                            Label {
+                                Layout.fillWidth: true
+                                text: card.modelData.summary
+                                color: Theme.text
+                                font.pixelSize: Theme.fontBody
+                                font.bold: true
+                                font.strikeout: root.declined(card.modelData)
+                                wrapMode: Text.Wrap
+                            }
+                            Rectangle {
+                                visible: badge.text.length > 0
+                                Layout.preferredHeight: 18
+                                Layout.preferredWidth: badge.implicitWidth + 12
+                                radius: 9
+                                color: root.pending(card.modelData) ? Theme.accent : Theme.surfaceAlt
+                                Label {
+                                    id: badge
+                                    anchors.centerIn: parent
+                                    text: root.pending(card.modelData) ? "Invitation"
+                                        : card.modelData.myStatus === "ACCEPTED" && card.modelData.canRespond ? "Going"
+                                        : card.modelData.myStatus === "TENTATIVE" ? "Maybe"
+                                        : card.modelData.myStatus === "DECLINED" ? "Declined" : ""
+                                    color: root.pending(card.modelData) ? Theme.accentText : Theme.textMuted
+                                    font.pixelSize: 10
+                                    font.bold: true
+                                }
+                            }
                         }
                         Label {
                             Layout.fillWidth: true

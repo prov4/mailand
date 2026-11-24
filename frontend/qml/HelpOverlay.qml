@@ -37,12 +37,15 @@ Popup {
             { keys: "h / l", what: "Previous / next day" },
             { keys: "k / j", what: "Previous / next week" },
             { keys: "p / n", what: "Previous / next month" },
-            { keys: "t", what: "Today" }
+            { keys: "t", what: "Today" },
+            { keys: "Enter / click", what: "Event details, invitations" },
+            { keys: "y / m / n", what: "Answer invitation: yes / maybe / no" }
         ] },
         { title: "Contacts", rows: [
             { keys: "j / k", what: "Next / previous contact" },
             { keys: "/", what: "Search" },
-            { keys: "c / Enter", what: "Write to contact" }
+            { keys: "c / Enter", what: "Write to contact" },
+            { keys: "n / e", what: "New contact / edit contact" }
         ] }
     ]
 

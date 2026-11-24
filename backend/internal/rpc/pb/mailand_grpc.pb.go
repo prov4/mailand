@@ -22,19 +22,23 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	MailandService_ListAccounts_FullMethodName    = "/mailand.v1.MailandService/ListAccounts"
-	MailandService_ListFolders_FullMethodName     = "/mailand.v1.MailandService/ListFolders"
-	MailandService_ListMessages_FullMethodName    = "/mailand.v1.MailandService/ListMessages"
-	MailandService_GetMessage_FullMethodName      = "/mailand.v1.MailandService/GetMessage"
-	MailandService_GetAttachment_FullMethodName   = "/mailand.v1.MailandService/GetAttachment"
-	MailandService_SearchMessages_FullMethodName  = "/mailand.v1.MailandService/SearchMessages"
-	MailandService_SetMessageFlags_FullMethodName = "/mailand.v1.MailandService/SetMessageFlags"
-	MailandService_SendMessage_FullMethodName     = "/mailand.v1.MailandService/SendMessage"
-	MailandService_TriggerSync_FullMethodName     = "/mailand.v1.MailandService/TriggerSync"
-	MailandService_ListCalendars_FullMethodName   = "/mailand.v1.MailandService/ListCalendars"
-	MailandService_ListEvents_FullMethodName      = "/mailand.v1.MailandService/ListEvents"
-	MailandService_ListContacts_FullMethodName    = "/mailand.v1.MailandService/ListContacts"
-	MailandService_SubscribeEvents_FullMethodName = "/mailand.v1.MailandService/SubscribeEvents"
+	MailandService_ListAccounts_FullMethodName          = "/mailand.v1.MailandService/ListAccounts"
+	MailandService_ListFolders_FullMethodName           = "/mailand.v1.MailandService/ListFolders"
+	MailandService_ListMessages_FullMethodName          = "/mailand.v1.MailandService/ListMessages"
+	MailandService_GetMessage_FullMethodName            = "/mailand.v1.MailandService/GetMessage"
+	MailandService_GetAttachment_FullMethodName         = "/mailand.v1.MailandService/GetAttachment"
+	MailandService_SearchMessages_FullMethodName        = "/mailand.v1.MailandService/SearchMessages"
+	MailandService_SetMessageFlags_FullMethodName       = "/mailand.v1.MailandService/SetMessageFlags"
+	MailandService_SendMessage_FullMethodName           = "/mailand.v1.MailandService/SendMessage"
+	MailandService_TriggerSync_FullMethodName           = "/mailand.v1.MailandService/TriggerSync"
+	MailandService_ListCalendars_FullMethodName         = "/mailand.v1.MailandService/ListCalendars"
+	MailandService_ListEvents_FullMethodName            = "/mailand.v1.MailandService/ListEvents"
+	MailandService_ListContacts_FullMethodName          = "/mailand.v1.MailandService/ListContacts"
+	MailandService_SaveContact_FullMethodName           = "/mailand.v1.MailandService/SaveContact"
+	MailandService_DeleteContact_FullMethodName         = "/mailand.v1.MailandService/DeleteContact"
+	MailandService_ListMessagesByAddress_FullMethodName = "/mailand.v1.MailandService/ListMessagesByAddress"
+	MailandService_RespondToEvent_FullMethodName        = "/mailand.v1.MailandService/RespondToEvent"
+	MailandService_SubscribeEvents_FullMethodName       = "/mailand.v1.MailandService/SubscribeEvents"
 )
 
 // MailandServiceClient is the client API for MailandService service.
@@ -56,6 +60,15 @@ type MailandServiceClient interface {
 	ListCalendars(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*CalendarList, error)
 	ListEvents(ctx context.Context, in *ListEventsRequest, opts ...grpc.CallOption) (*EventList, error)
 	ListContacts(ctx context.Context, in *ListContactsRequest, opts ...grpc.CallOption) (*ContactList, error)
+	// Create (empty contact_id: in account_id's address book) or update a
+	// contact; written to the server, then returned. ABORTED: changed on the server.
+	SaveContact(ctx context.Context, in *SaveContactRequest, opts ...grpc.CallOption) (*Contact, error)
+	DeleteContact(ctx context.Context, in *ContactRequest, opts ...grpc.CallOption) (*Empty, error)
+	// Newest messages from/to/cc any of the addresses (contact details).
+	ListMessagesByAddress(ctx context.Context, in *AddressMessagesRequest, opts ...grpc.CallOption) (*MessageHeaderList, error)
+	// Accept / maybe / decline an invitation (the whole series). The server
+	// notifies the organizer. ABORTED: the event changed on the server meanwhile.
+	RespondToEvent(ctx context.Context, in *RespondToEventRequest, opts ...grpc.CallOption) (*Empty, error)
 	// Real-time Push Events (New mail, sync status, flag updates)
 	SubscribeEvents(ctx context.Context, in *Empty, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DaemonEvent], error)
 }
@@ -188,6 +201,46 @@ func (c *mailandServiceClient) ListContacts(ctx context.Context, in *ListContact
 	return out, nil
 }
 
+func (c *mailandServiceClient) SaveContact(ctx context.Context, in *SaveContactRequest, opts ...grpc.CallOption) (*Contact, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Contact)
+	err := c.cc.Invoke(ctx, MailandService_SaveContact_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *mailandServiceClient) DeleteContact(ctx context.Context, in *ContactRequest, opts ...grpc.CallOption) (*Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Empty)
+	err := c.cc.Invoke(ctx, MailandService_DeleteContact_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *mailandServiceClient) ListMessagesByAddress(ctx context.Context, in *AddressMessagesRequest, opts ...grpc.CallOption) (*MessageHeaderList, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(MessageHeaderList)
+	err := c.cc.Invoke(ctx, MailandService_ListMessagesByAddress_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *mailandServiceClient) RespondToEvent(ctx context.Context, in *RespondToEventRequest, opts ...grpc.CallOption) (*Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Empty)
+	err := c.cc.Invoke(ctx, MailandService_RespondToEvent_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *mailandServiceClient) SubscribeEvents(ctx context.Context, in *Empty, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DaemonEvent], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &MailandService_ServiceDesc.Streams[0], MailandService_SubscribeEvents_FullMethodName, cOpts...)
@@ -226,6 +279,15 @@ type MailandServiceServer interface {
 	ListCalendars(context.Context, *Empty) (*CalendarList, error)
 	ListEvents(context.Context, *ListEventsRequest) (*EventList, error)
 	ListContacts(context.Context, *ListContactsRequest) (*ContactList, error)
+	// Create (empty contact_id: in account_id's address book) or update a
+	// contact; written to the server, then returned. ABORTED: changed on the server.
+	SaveContact(context.Context, *SaveContactRequest) (*Contact, error)
+	DeleteContact(context.Context, *ContactRequest) (*Empty, error)
+	// Newest messages from/to/cc any of the addresses (contact details).
+	ListMessagesByAddress(context.Context, *AddressMessagesRequest) (*MessageHeaderList, error)
+	// Accept / maybe / decline an invitation (the whole series). The server
+	// notifies the organizer. ABORTED: the event changed on the server meanwhile.
+	RespondToEvent(context.Context, *RespondToEventRequest) (*Empty, error)
 	// Real-time Push Events (New mail, sync status, flag updates)
 	SubscribeEvents(*Empty, grpc.ServerStreamingServer[DaemonEvent]) error
 	mustEmbedUnimplementedMailandServiceServer()
@@ -273,6 +335,18 @@ func (UnimplementedMailandServiceServer) ListEvents(context.Context, *ListEvents
 }
 func (UnimplementedMailandServiceServer) ListContacts(context.Context, *ListContactsRequest) (*ContactList, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListContacts not implemented")
+}
+func (UnimplementedMailandServiceServer) SaveContact(context.Context, *SaveContactRequest) (*Contact, error) {
+	return nil, status.Error(codes.Unimplemented, "method SaveContact not implemented")
+}
+func (UnimplementedMailandServiceServer) DeleteContact(context.Context, *ContactRequest) (*Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteContact not implemented")
+}
+func (UnimplementedMailandServiceServer) ListMessagesByAddress(context.Context, *AddressMessagesRequest) (*MessageHeaderList, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListMessagesByAddress not implemented")
+}
+func (UnimplementedMailandServiceServer) RespondToEvent(context.Context, *RespondToEventRequest) (*Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method RespondToEvent not implemented")
 }
 func (UnimplementedMailandServiceServer) SubscribeEvents(*Empty, grpc.ServerStreamingServer[DaemonEvent]) error {
 	return status.Error(codes.Unimplemented, "method SubscribeEvents not implemented")
@@ -514,6 +588,78 @@ func _MailandService_ListContacts_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _MailandService_SaveContact_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SaveContactRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MailandServiceServer).SaveContact(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MailandService_SaveContact_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MailandServiceServer).SaveContact(ctx, req.(*SaveContactRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _MailandService_DeleteContact_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ContactRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MailandServiceServer).DeleteContact(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MailandService_DeleteContact_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MailandServiceServer).DeleteContact(ctx, req.(*ContactRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _MailandService_ListMessagesByAddress_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AddressMessagesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MailandServiceServer).ListMessagesByAddress(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MailandService_ListMessagesByAddress_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MailandServiceServer).ListMessagesByAddress(ctx, req.(*AddressMessagesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _MailandService_RespondToEvent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RespondToEventRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MailandServiceServer).RespondToEvent(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MailandService_RespondToEvent_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MailandServiceServer).RespondToEvent(ctx, req.(*RespondToEventRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _MailandService_SubscribeEvents_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(Empty)
 	if err := stream.RecvMsg(m); err != nil {
@@ -579,6 +725,22 @@ var MailandService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListContacts",
 			Handler:    _MailandService_ListContacts_Handler,
+		},
+		{
+			MethodName: "SaveContact",
+			Handler:    _MailandService_SaveContact_Handler,
+		},
+		{
+			MethodName: "DeleteContact",
+			Handler:    _MailandService_DeleteContact_Handler,
+		},
+		{
+			MethodName: "ListMessagesByAddress",
+			Handler:    _MailandService_ListMessagesByAddress_Handler,
+		},
+		{
+			MethodName: "RespondToEvent",
+			Handler:    _MailandService_RespondToEvent_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

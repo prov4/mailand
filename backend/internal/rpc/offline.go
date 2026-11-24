@@ -2,6 +2,9 @@ package rpc
 
 import (
 	"context"
+	"time"
+
+	"mailand/backend/internal/dav"
 
 	"mailand/backend/internal/rpc/pb"
 	"mailand/backend/internal/store"
@@ -51,5 +54,111 @@ func (o *OfflineSyncer) TriggerSync(accountID string) error {
 	}
 	o.broker.Publish(&pb.DaemonEvent{Type: pb.DaemonEvent_SYNC_STARTED, AccountId: accountID})
 	o.broker.Publish(&pb.DaemonEvent{Type: pb.DaemonEvent_SYNC_FINISHED, AccountId: accountID})
+	return nil
+}
+
+// OfflineResponder answers invitations in the store only (`-offline`).
+type OfflineResponder struct {
+	st     *store.Store
+	broker *Broker
+}
+
+// NewOfflineResponder returns a Responder that never talks to a server.
+func NewOfflineResponder(st *store.Store, broker *Broker) *OfflineResponder {
+	return &OfflineResponder{st: st, broker: broker}
+}
+
+// Respond rewrites the stored object and publishes CALENDARS_UPDATED.
+func (o *OfflineResponder) Respond(ctx context.Context, seq int64, status string) error {
+	obj, cal, err := o.st.GetCalendarObject(ctx, seq)
+	if err != nil {
+		return err
+	}
+	acc, err := o.st.GetAccount(ctx, cal.AccountID)
+	if err != nil {
+		return err
+	}
+	data, err := dav.RespondData(obj.Data, acc.Email, status, time.Now())
+	if err != nil {
+		return err
+	}
+	obj.Data = data
+	if err := o.st.UpsertCalendarObjects(ctx, []store.CalendarObject{obj}); err != nil {
+		return err
+	}
+	o.broker.Publish(&pb.DaemonEvent{Type: pb.DaemonEvent_CALENDARS_UPDATED, AccountId: cal.AccountID})
+	return nil
+}
+
+// OfflineContacts edits contacts in the store only (`-offline`).
+type OfflineContacts struct {
+	st     *store.Store
+	broker *Broker
+}
+
+// NewOfflineContacts returns a ContactEditor that never talks to a server.
+func NewOfflineContacts(st *store.Store, broker *Broker) *OfflineContacts {
+	return &OfflineContacts{st: st, broker: broker}
+}
+
+// SaveContact creates or updates the stored card.
+func (o *OfflineContacts) SaveContact(ctx context.Context, seq int64, accountID string, in dav.ContactInput) (int64, error) {
+	var book store.AddressBook
+	var oldData, path string
+	if seq != 0 {
+		c, b, err := o.st.GetContact(ctx, seq)
+		if err != nil {
+			return 0, err
+		}
+		book, oldData, path = b, c.Data, c.Path
+	} else {
+		books, err := o.st.ListAddressBooks(ctx, accountID)
+		if err != nil {
+			return 0, err
+		}
+		for _, b := range books {
+			if !b.ReadOnly {
+				book = b
+				break
+			}
+		}
+		if book.ID == "" {
+			return 0, dav.ErrNoAddressBook
+		}
+	}
+	if book.ReadOnly {
+		return 0, dav.ErrReadOnly
+	}
+	data, uid, err := dav.BuildCard(oldData, in)
+	if err != nil {
+		return 0, err
+	}
+	if path == "" {
+		path = book.Path + uid + ".vcf"
+	}
+	row, err := dav.ContactRow(book.ID, path, "", data)
+	if err != nil {
+		return 0, err
+	}
+	if err := o.st.UpsertContacts(ctx, []store.Contact{row}); err != nil {
+		return 0, err
+	}
+	o.broker.Publish(&pb.DaemonEvent{Type: pb.DaemonEvent_CONTACTS_UPDATED, AccountId: book.AccountID})
+	return o.st.ContactSeq(ctx, book.ID, path)
+}
+
+// DeleteContact removes the stored card.
+func (o *OfflineContacts) DeleteContact(ctx context.Context, seq int64) error {
+	c, b, err := o.st.GetContact(ctx, seq)
+	if err != nil {
+		return err
+	}
+	if b.ReadOnly {
+		return dav.ErrReadOnly
+	}
+	if err := o.st.DeleteContacts(ctx, b.ID, []string{c.Path}); err != nil {
+		return err
+	}
+	o.broker.Publish(&pb.DaemonEvent{Type: pb.DaemonEvent_CONTACTS_UPDATED, AccountId: b.AccountID})
 	return nil
 }

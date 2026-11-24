@@ -51,6 +51,12 @@ public:
         return gridStart().addDays(index);
     }
 
+    // One occurrence by id (same map as eventsOn), {} if gone.
+    Q_INVOKABLE QVariantMap eventById(const QString &id, int revision = 0) const;
+    // Accept / maybe / decline an invitation: "ACCEPTED", "TENTATIVE", "DECLINED".
+    // Applied optimistically to every occurrence of the series; reverted on failure.
+    Q_INVOKABLE void respond(const QString &eventId, const QString &status);
+
     Q_INVOKABLE void select(const QDate &day);
     Q_INVOKABLE void moveDays(int n) { select(m_selected.addDays(n)); }
     Q_INVOKABLE void moveMonths(int n) { select(m_selected.addMonths(n)); }
@@ -74,7 +80,12 @@ private:
         QString id, calendarId, summary, location, description, organizer, status;
         QDateTime start, end;
         bool allDay = false, recurring = false;
+        QString organizerEmail, myStatus;
+        bool canRespond = false;
+        QVariantList attendees; // maps: name, email, status, role, isMe
     };
+    QVariantMap toMap(const Ev &e) const;
+    void setMyStatus(const QString &objectKey, const QString &status);
 
     void loadCalendars();
     void loadEvents();

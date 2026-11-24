@@ -22,7 +22,8 @@ ApplicationWindow {
 
     // Plain-letter shortcuts are inactive while typing in a search field or while a modal is open.
     readonly property bool keysEnabled: !listPane.searchActive && !contactsView.searchActive
-                                        && !composer.opened && !help.opened
+                                        && !composer.opened && !help.opened && !eventPopup.opened
+                                        && !contactEditor.opened
     readonly property bool mailKeys: keysEnabled && view === "mail"
     readonly property bool calendarKeys: keysEnabled && view === "calendar"
     readonly property bool contactKeys: keysEnabled && view === "contacts"
@@ -42,7 +43,23 @@ ApplicationWindow {
     }
 
     // Debug (--open-composer): mode is new | reply | replyAll | forward.
+    // Debug (--view calendar --open-composer invite): show the first pending invitation.
+    function debugOpenInvite() {
+        for (let i = 0; i < 42; ++i) {
+            const evs = calendarModel.eventsOn(calendarModel.gridDate(i), calendarModel.revision)
+            for (const ev of evs)
+                if (ev.canRespond && ev.myStatus === "NEEDS-ACTION") {
+                    calendarModel.select(calendarModel.gridDate(i))
+                    eventPopup.show(ev.id)
+                    return
+                }
+        }
+    }
     function debugOpenComposer(mode: string) {
+        if (mode === "invite")
+            return debugOpenInvite()
+        if (mode === "contact")
+            return contactEditor.openEdit(contactsModel.get(0))
         if (mode === "new")
             composer.openNew(accountId)
         else if (mode.startsWith("type:")) {
@@ -209,12 +226,15 @@ ApplicationWindow {
     Shortcut { sequences: ["n", "PgDown"]; enabled: root.calendarKeys; onActivated: calendarModel.moveMonths(1) }
     Shortcut { sequences: ["p", "PgUp"]; enabled: root.calendarKeys; onActivated: calendarModel.moveMonths(-1) }
     Shortcut { sequence: "t"; enabled: root.calendarKeys; onActivated: calendarModel.goToday() }
+    Shortcut { sequences: ["Return", "Enter"]; enabled: root.calendarKeys; onActivated: calendarView.openFirst() }
 
     // Contacts: j/k move, / search, c or Enter writes to the selected contact.
     Shortcut { sequences: ["j", "Down"]; enabled: root.contactKeys; onActivated: contactsView.next() }
     Shortcut { sequences: ["k", "Up"]; enabled: root.contactKeys; onActivated: contactsView.previous() }
     Shortcut { sequence: "/"; enabled: root.contactKeys; onActivated: contactsView.focusSearch() }
     Shortcut { sequences: ["c", "Return", "Enter"]; enabled: root.contactKeys; onActivated: contactsView.composeToCurrent() }
+    Shortcut { sequence: "n"; enabled: root.contactKeys; onActivated: contactEditor.openNew(root.accountId, "", "") }
+    Shortcut { sequence: "e"; enabled: root.contactKeys; onActivated: contactsView.editCurrent() }
     Shortcut { sequence: "Ctrl+Q"; onActivated: Qt.quit() }
 
     // ---- Layout -----------------------------------------------------------------------------
@@ -289,18 +309,23 @@ ApplicationWindow {
                         SplitView.fillWidth: true
                         SplitView.minimumWidth: 320
                         message: messageView
+                        onAddSenderToContacts: (name, email) => contactEditor.openNew(root.accountId, name, email)
                     }
                 }
 
                 CalendarView {
                     id: calendarView
                     calendar: calendarModel
+                    onEventActivated: id => eventPopup.show(id)
                 }
 
                 ContactsView {
                     id: contactsView
                     contacts: contactsModel
                     onComposeTo: (accountId, address) => composer.openNewTo(accountId.length > 0 ? accountId : root.accountId, address)
+                    onNewContact: contactEditor.openNew(root.accountId, "", "")
+                    onEditContact: c => contactEditor.openEdit(c)
+                    onOpenMessage: id => { root.showView("mail"); root.openMessage(id) }
                 }
             }
         }
@@ -400,4 +425,17 @@ ApplicationWindow {
         onSent: toast.show("Message sent", false)
     }
     HelpOverlay { id: help }
+    EventPopup {
+        id: eventPopup
+        calendar: calendarModel
+    }
+    ContactEditor {
+        id: contactEditor
+        contacts: contactsModel
+    }
+    Connections {
+        target: contactsModel
+        function onContactSaved() { toast.show("Contact saved", false) }
+        function onContactDeleted() { toast.show("Contact deleted", false) }
+    }
 }

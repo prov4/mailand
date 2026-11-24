@@ -4,6 +4,8 @@
 #include "mailand.grpc.pb.h"
 
 #include <QColor>
+#include <QDateTime>
+#include <QLocale>
 #include <QRegularExpression>
 
 namespace {
@@ -80,6 +82,7 @@ QVariant ContactsModel::data(const QModelIndex &index, int role) const
     case AccountIdRole: return r.accountId;
     case AddressRole: return r.email.isEmpty() ? QString() : formatAddress(r.name, r.email);
     case ColorRole: return avatarColor(r.id + r.name);
+    case ReadOnlyRole: return r.readOnly;
     default: return {};
     }
 }
@@ -90,7 +93,7 @@ QHash<int, QByteArray> ContactsModel::roleNames() const
         {ContactIdRole, "contactId"}, {FullNameRole, "fullName"}, {InitialsRole, "initials"},
         {EmailRole, "email"}, {EmailsRole, "emails"}, {PhonesRole, "phones"},
         {OrganizationRole, "organization"}, {AccountIdRole, "accountId"}, {AddressRole, "address"},
-        {ColorRole, "avatarColor"},
+        {ColorRole, "avatarColor"}, {ReadOnlyRole, "readOnly"},
     };
 }
 
@@ -163,7 +166,8 @@ void ContactsModel::refresh()
             const QString lq = q.toLower();
             std::vector<Row> rows;
             for (const auto &c : resp.contacts()) {
-                Row base{s(c.id()), s(c.full_name()), QString(), s(c.organization()), s(c.account_id()), {}, {}};
+                Row base{s(c.id()), s(c.full_name()), QString(), s(c.organization()), s(c.account_id()), {}, {},
+                         c.read_only()};
                 for (const auto &e : c.emails())
                     base.emails << s(e);
                 for (const auto &p : c.phones())
@@ -198,4 +202,91 @@ void ContactsModel::apply(std::vector<Row> rows)
     endResetModel();
     if (before != int(m_rows.size()))
         emit countChanged();
+}
+
+int ContactsModel::indexOf(const QString &contactId) const
+{
+    for (size_t i = 0; i < m_rows.size(); ++i)
+        if (m_rows[i].id == contactId)
+            return int(i);
+    return -1;
+}
+
+void ContactsModel::setSaving(bool v)
+{
+    if (v == m_saving)
+        return;
+    m_saving = v;
+    emit savingChanged();
+}
+
+void ContactsModel::save(const QVariantMap &f)
+{
+    mailand::v1::SaveContactRequest req;
+    req.set_contact_id(f.value(QStringLiteral("contactId")).toString().toStdString());
+    req.set_account_id(f.value(QStringLiteral("accountId")).toString().toStdString());
+    req.set_full_name(f.value(QStringLiteral("fullName")).toString().trimmed().toStdString());
+    req.set_organization(f.value(QStringLiteral("organization")).toString().trimmed().toStdString());
+    for (const QString &e : f.value(QStringLiteral("emails")).toStringList())
+        if (!e.trimmed().isEmpty())
+            req.add_emails(e.trimmed().toStdString());
+    for (const QString &p : f.value(QStringLiteral("phones")).toStringList())
+        if (!p.trimmed().isEmpty())
+            req.add_phones(p.trimmed().toStdString());
+    setSaving(true);
+    Rpc::instance()->saveContact(std::move(req), this, [this](const grpc::Status &st, const mailand::v1::Contact &c) {
+        setSaving(false);
+        if (!st.ok()) {
+            emit editFailed(Rpc::statusText(st));
+            return;
+        }
+        const QString id = s(c.id());
+        refresh();
+        emit contactSaved(id);
+    });
+}
+
+void ContactsModel::remove(const QString &contactId)
+{
+    setSaving(true);
+    Rpc::instance()->deleteContact(contactId, this, [this, contactId](const grpc::Status &st, const mailand::v1::Empty &) {
+        setSaving(false);
+        if (!st.ok()) {
+            emit editFailed(Rpc::statusText(st));
+            return;
+        }
+        refresh();
+        emit contactDeleted(contactId);
+    });
+}
+
+void ContactsModel::loadRecentMail(const QStringList &emails)
+{
+    const int gen = ++m_recentGen;
+    if (emails.isEmpty()) {
+        m_recent.clear();
+        emit recentMailChanged();
+        return;
+    }
+    Rpc::instance()->listMessagesByAddress(
+        emails, 8, this, [this, gen](const grpc::Status &st, const mailand::v1::MessageHeaderList &resp) {
+            if (gen != m_recentGen)
+                return;
+            QVariantList out;
+            if (st.ok()) {
+                const QLocale loc;
+                for (const auto &m : resp.messages()) {
+                    const QDateTime ts = QDateTime::fromSecsSinceEpoch(m.timestamp_unix());
+                    const QString name = s(m.from_name());
+                    out.append(QVariantMap{{QStringLiteral("id"), s(m.id())},
+                                           {QStringLiteral("subject"), m.subject().empty() ? QStringLiteral("(no subject)")
+                                                                                           : s(m.subject())},
+                                           {QStringLiteral("sender"), name.isEmpty() ? s(m.from_address()) : name},
+                                           {QStringLiteral("dateText"), loc.toString(ts.date(), QLocale::ShortFormat)},
+                                           {QStringLiteral("isRead"), m.is_read()}});
+                }
+            }
+            m_recent = out;
+            emit recentMailChanged();
+        });
 }

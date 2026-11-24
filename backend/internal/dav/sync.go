@@ -55,10 +55,12 @@ type Manager struct {
 	notify func(Event)
 	local  *time.Location
 
-	mu      sync.Mutex
-	workers map[string]*worker
-	cancel  context.CancelFunc
-	wg      sync.WaitGroup
+	mu           sync.Mutex
+	workers      map[string]*worker
+	writeClients map[string]webdav.HTTPClient
+	ctx          context.Context // set by Start; outlives single requests
+	cancel       context.CancelFunc
+	wg           sync.WaitGroup
 
 	// Interval between syncs; settable before Start (tests).
 	Interval time.Duration
@@ -100,7 +102,7 @@ func (m *Manager) Start(ctx context.Context) {
 	ctx, cancel := context.WithCancel(ctx)
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.cancel = cancel
+	m.ctx, m.cancel = ctx, cancel
 	for i := range m.cfg.Accounts {
 		a := &m.cfg.Accounts[i]
 		if a.CalendarURL() == "" && a.ContactsURL() == "" {
@@ -568,4 +570,68 @@ func (w *worker) syncAddressBook(ctx context.Context, cd *carddav.Client, bookID
 		w.log.Warn("some contacts could not be read", "address_book", coll, "err", errors.Join(errs...))
 	}
 	return changed, nil
+}
+
+// Respond sets the account's attendance (Accepted, Tentative, Declined) on the
+// stored event object seq (the whole series), writes it back to the server
+// with If-Match, and updates the store. With CalDAV scheduling (Google and
+// most servers) the server then notifies the organizer. ErrConflict means the
+// event changed on the server; a sync is started so a retry sees the new data.
+func (m *Manager) Respond(ctx context.Context, seq int64, status string) error {
+	obj, cal, err := m.st.GetCalendarObject(ctx, seq)
+	if err != nil {
+		return err
+	}
+	acct, ok := m.cfg.Account(cal.AccountID)
+	if !ok || acct.CalendarURL() == "" {
+		return fmt.Errorf("account %q has no calendar access", cal.AccountID)
+	}
+	if cal.ReadOnly {
+		return ErrNotInvited
+	}
+	data, err := RespondData(obj.Data, acct.Email, status, time.Now())
+	if err != nil {
+		return err
+	}
+	client, err := m.respondClient(ctx, acct)
+	if err != nil {
+		return err
+	}
+	etag, err := putObject(ctx, client, acct.CalendarURL(), obj.Path, "text/calendar; charset=utf-8", data, obj.ETag, false)
+	if errors.Is(err, ErrConflict) {
+		m.TriggerSync(acct.ID)
+		return err
+	}
+	if err != nil {
+		return err
+	}
+	obj.Data, obj.ETag = data, etag // empty ETag: the next sync fetches the server's version
+	if err := m.st.UpsertCalendarObjects(ctx, []store.CalendarObject{obj}); err != nil {
+		return err
+	}
+	m.emit(Event{Kind: CalendarsUpdated, AccountID: acct.ID})
+	return nil
+}
+
+// respondClient returns a per-account HTTP client for writes (the sync
+// worker's client belongs to its goroutine).
+func (m *Manager) respondClient(ctx context.Context, a *config.Account) (webdav.HTTPClient, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.writeClients == nil {
+		m.writeClients = map[string]webdav.HTTPClient{}
+	}
+	if c := m.writeClients[a.ID]; c != nil {
+		return c, nil
+	}
+	base := ctx
+	if m.ctx != nil {
+		base = m.ctx // token refreshes must outlive this request
+	}
+	c, err := m.httpClient(base, a)
+	if err != nil {
+		return nil, err
+	}
+	m.writeClients[a.ID] = c
+	return c, nil
 }

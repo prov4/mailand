@@ -32,6 +32,7 @@ type memBackend struct {
 	ics   map[string]string // path -> iCalendar text
 	vcf   map[string]string // path -> vCard text
 	gen   map[string]int    // path -> version (ETag)
+	puts  int
 }
 
 func newMem() *memBackend {
@@ -111,8 +112,22 @@ func (b *memBackend) ListCalendarObjects(_ context.Context, coll string, _ *cald
 func (b *memBackend) QueryCalendarObjects(ctx context.Context, coll string, _ *caldav.CalendarQuery) ([]caldav.CalendarObject, error) {
 	return b.ListCalendarObjects(ctx, coll, nil)
 }
-func (b *memBackend) PutCalendarObject(context.Context, string, *ical.Calendar, *caldav.PutCalendarObjectOptions) (*caldav.CalendarObject, error) {
-	return nil, errors.New("read-only")
+func (b *memBackend) PutCalendarObject(_ context.Context, p string, cal *ical.Calendar, opts *caldav.PutCalendarObjectOptions) (*caldav.CalendarObject, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if opts != nil && opts.IfMatch.IsSet() {
+		if ok, _ := opts.IfMatch.MatchETag(b.etag(p)); !ok {
+			return nil, webdav.NewHTTPError(http.StatusPreconditionFailed, errors.New("etag mismatch"))
+		}
+	}
+	var buf strings.Builder
+	if err := ical.NewEncoder(&buf).Encode(cal); err != nil {
+		return nil, err
+	}
+	b.ics[p] = buf.String()
+	b.gen[p]++
+	b.puts++
+	return b.calObj(p)
 }
 func (b *memBackend) DeleteCalendarObject(context.Context, string) error {
 	return errors.New("read-only")
@@ -171,11 +186,35 @@ func (b *memBackend) ListAddressObjects(_ context.Context, coll string, _ *cardd
 func (b *memBackend) QueryAddressObjects(ctx context.Context, coll string, _ *carddav.AddressBookQuery) ([]carddav.AddressObject, error) {
 	return b.ListAddressObjects(ctx, coll, nil)
 }
-func (b *memBackend) PutAddressObject(context.Context, string, vcard.Card, *carddav.PutAddressObjectOptions) (*carddav.AddressObject, error) {
-	return nil, errors.New("read-only")
+func (b *memBackend) PutAddressObject(_ context.Context, p string, card vcard.Card, opts *carddav.PutAddressObjectOptions) (*carddav.AddressObject, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	_, exists := b.vcf[p]
+	if opts != nil && opts.IfNoneMatch.IsWildcard() && exists {
+		return nil, webdav.NewHTTPError(http.StatusPreconditionFailed, errors.New("exists"))
+	}
+	if opts != nil && opts.IfMatch.IsSet() {
+		if ok, _ := opts.IfMatch.MatchETag(b.etag(p)); !ok || !exists {
+			return nil, webdav.NewHTTPError(http.StatusPreconditionFailed, errors.New("etag mismatch"))
+		}
+	}
+	var buf strings.Builder
+	if err := vcard.NewEncoder(&buf).Encode(card); err != nil {
+		return nil, err
+	}
+	b.vcf[p] = buf.String()
+	b.gen[p]++
+	b.puts++
+	return b.cardObj(p)
 }
-func (b *memBackend) DeleteAddressObject(context.Context, string) error {
-	return errors.New("read-only")
+func (b *memBackend) DeleteAddressObject(_ context.Context, p string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if _, ok := b.vcf[p]; !ok {
+		return errNotFound
+	}
+	delete(b.vcf, p)
+	return nil
 }
 
 // countingClient counts requests so tests can check that unchanged
@@ -364,5 +403,174 @@ func TestEncodeVCardAddsVersion(t *testing.T) {
 	}
 	if c.Get(vcard.FieldVersion) != nil {
 		t.Error("input card modified")
+	}
+}
+
+const invite = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//t//EN\r\nBEGIN:VEVENT\r\nUID:inv\r\nDTSTAMP:20260101T000000Z\r\n" +
+	"SUMMARY:Planning\r\nDTSTART:20261201T100000Z\r\nDURATION:PT1H\r\nRRULE:FREQ=WEEKLY;COUNT=3\r\n" +
+	"ORGANIZER;CN=Boss:mailto:boss@x\r\n" +
+	"ATTENDEE;CN=Boss;PARTSTAT=ACCEPTED;ROLE=CHAIR:mailto:boss@x\r\n" +
+	"ATTENDEE;CN=Me;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:A@X\r\n" +
+	"ATTENDEE;PARTSTAT=DECLINED:mailto:other@x\r\nEND:VEVENT\r\n" +
+	"BEGIN:VEVENT\r\nUID:inv\r\nDTSTAMP:20260101T000000Z\r\nRECURRENCE-ID:20261208T100000Z\r\nSUMMARY:Planning (moved)\r\n" +
+	"DTSTART:20261209T100000Z\r\nDURATION:PT1H\r\nORGANIZER:mailto:boss@x\r\nATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:a@x\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+
+func TestInviteAttendeesAndRespond(t *testing.T) {
+	e := newDavEnv(t)
+	ctx := context.Background()
+	e.mem.putICS("/u/cal/work/inv.ics", invite)
+	e.sync()
+
+	objs, _ := e.st.CalendarObjectsInRange(ctx, nil, 0, 1<<62)
+	if len(objs) != 1 {
+		t.Fatalf("objects: %d", len(objs))
+	}
+	inst, err := ExpandStored(objs[0].Data, time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC), time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC), time.UTC)
+	if err != nil || len(inst) != 3 {
+		t.Fatalf("instances: %d %v", len(inst), err)
+	}
+	if inst[0].OrganizerEmail != "boss@x" || len(inst[0].Attendees) != 3 || inst[0].Attendees[0].Role != "CHAIR" || inst[0].Attendees[1].Name != "Me" {
+		t.Fatalf("attendees: %+v", inst[0])
+	}
+	if st, can := MyStatus(inst[0], "a@x"); st != NeedsAction || !can {
+		t.Fatalf("my status %q %v", st, can)
+	}
+	if _, can := MyStatus(inst[0], "boss@x"); can {
+		t.Error("organizer must not respond")
+	}
+	if st, can := MyStatus(inst[0], "nobody@x"); st != "" || can {
+		t.Error("stranger")
+	}
+
+	// Accept the whole series: master and override change on the server.
+	if err := e.m.Respond(ctx, objs[0].Seq, Accepted); err != nil {
+		t.Fatal(err)
+	}
+	if e.mem.puts != 1 {
+		t.Fatalf("puts = %d", e.mem.puts)
+	}
+	srv := e.mem.ics["/u/cal/work/inv.ics"]
+	if strings.Count(srv, "PARTSTAT=ACCEPTED") != 3 || strings.Contains(srv, "RSVP=TRUE") || !strings.Contains(srv, "PARTSTAT=DECLINED") {
+		t.Fatalf("server copy:\n%s", srv)
+	}
+	objs, _ = e.st.CalendarObjectsInRange(ctx, nil, 0, 1<<62)
+	inst, _ = ExpandStored(objs[0].Data, time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC), time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC), time.UTC)
+	for _, in := range inst {
+		if st, _ := MyStatus(in, "a@x"); st != Accepted {
+			t.Errorf("stored %s: %q", in.Start, st)
+		}
+	}
+	// The stored ETag is the server's new one: the next sync downloads nothing.
+	before := e.client.reports
+	e.sync()
+	if e.client.reports != before {
+		t.Error("sync after respond refetched the event")
+	}
+
+	// The organizer edits the event meanwhile: the response is refused, not overwritten.
+	e.mem.putICS("/u/cal/work/inv.ics", strings.Replace(invite, "SUMMARY:Planning\r\n", "SUMMARY:Planning v2\r\n", 1))
+	if err := e.m.Respond(ctx, objs[0].Seq, Declined); !errors.Is(err, ErrConflict) {
+		t.Fatalf("conflict: %v", err)
+	}
+	if !strings.Contains(e.mem.ics["/u/cal/work/inv.ics"], "Planning v2") {
+		t.Error("organizer change overwritten")
+	}
+	if err := e.m.Respond(ctx, objs[0].Seq, "MAYBE"); !errors.Is(err, ErrBadResponse) {
+		t.Errorf("bad status: %v", err)
+	}
+}
+
+func TestRespondNotInvited(t *testing.T) {
+	_, err := RespondData(invite, "stranger@x", Accepted, time.Now())
+	if !errors.Is(err, ErrNotInvited) {
+		t.Errorf("stranger: %v", err)
+	}
+	if _, err := RespondData(invite, "boss@x", Declined, time.Now()); !errors.Is(err, ErrNotInvited) {
+		t.Errorf("organizer: %v", err)
+	}
+}
+
+func TestBuildCardKeepsUnknownFields(t *testing.T) {
+	old := "BEGIN:VCARD\r\nVERSION:3.0\r\nUID:u1\r\nFN:Ana Horvat\r\nN:Horvat;Ana;;;\r\n" +
+		"EMAIL;TYPE=WORK:ana@work.hr\r\nEMAIL;TYPE=HOME:ana@home.hr\r\nTEL;TYPE=CELL:091 111\r\n" +
+		"BDAY:1990-03-10\r\nADR;TYPE=HOME:;;Ilica 1;Zagreb;;10000;Croatia\r\nORG:Acme;R&D\r\nEND:VCARD\r\n"
+	data, uid, err := BuildCard(old, ContactInput{FullName: "Ana Horvat", Organization: "Acme",
+		Emails: []string{"ana@home.hr", " ana@new.hr "}, Phones: []string{"091 111"}})
+	if err != nil || uid != "u1" {
+		t.Fatal(uid, err)
+	}
+	for _, want := range []string{"BDAY:1990-03-10", "ADR;TYPE=HOME", "EMAIL;TYPE=HOME:ana@home.hr", "ana@new.hr", "TEL;TYPE=CELL:091 111", "ORG:Acme;R&D", "N:Horvat;Ana"} {
+		if !strings.Contains(data, want) {
+			t.Errorf("missing %q in\n%s", want, data)
+		}
+	}
+	if strings.Contains(data, "ana@work.hr") {
+		t.Error("removed email kept")
+	}
+	// A new card gets VERSION, a UID, FN and N.
+	data, uid, err = BuildCard("", ContactInput{FullName: "Ivan Ivić Novak", Emails: []string{"i@x.hr"}})
+	if err != nil || uid == "" || !strings.Contains(data, "VERSION:3.0") || !strings.Contains(data, "FN:Ivan Ivić Novak") || !strings.Contains(data, "N:Novak;Ivan Ivić") {
+		t.Fatalf("%v\n%s", err, data)
+	}
+	for _, bad := range []ContactInput{{}, {FullName: "x", Emails: []string{"not an email"}}, {FullName: "a\r\nBCC:x"}} {
+		if _, _, err := BuildCard("", bad); !errors.Is(err, ErrInvalidContact) {
+			t.Errorf("%+v: %v", bad, err)
+		}
+	}
+}
+
+func TestSaveAndDeleteContact(t *testing.T) {
+	e := newDavEnv(t)
+	ctx := context.Background()
+	e.mem.putVCF("/u/card/main/x.vcf", card("x", "Ana Anić", "ana@example.com"))
+	e.sync()
+
+	seq, err := e.m.SaveContact(ctx, 0, "acc", ContactInput{FullName: "Novi Kontakt", Emails: []string{"novi@example.com"}, Phones: []string{"+385 1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, _, err := e.st.GetContact(ctx, seq)
+	if err != nil || c.FullName != "Novi Kontakt" || !strings.HasPrefix(c.Path, "/u/card/main/") || c.ETag == "" {
+		t.Fatalf("new contact: %+v %v", c, err)
+	}
+	if !strings.Contains(e.mem.vcf[c.Path], "novi@example.com") {
+		t.Fatalf("not on the server: %v", e.mem.vcf)
+	}
+	before := e.client.reports
+	e.sync()
+	if e.client.reports != before {
+		t.Error("sync after create refetched")
+	}
+
+	ana, _ := e.st.SearchContacts(ctx, "Ana", false, 0)
+	if _, err := e.m.SaveContact(ctx, ana[0].Seq, "", ContactInput{FullName: "Ana Anić-Horvat", Emails: []string{"ana@example.com"}}); err != nil {
+		t.Fatal(err)
+	}
+	srv := e.mem.vcf["/u/card/main/x.vcf"]
+	// The input is the full editable set: no phone and no organization means both were cleared.
+	if !strings.Contains(srv, "FN:Ana Anić-Horvat") || strings.Contains(srv, "TEL") || strings.Contains(srv, "ORG") {
+		t.Errorf("server card after edit:\n%s", srv)
+	}
+
+	// Edited elsewhere meanwhile: refused, not overwritten.
+	e.mem.putVCF("/u/card/main/x.vcf", card("x", "Ana (phone)", "ana@example.com"))
+	if _, err := e.m.SaveContact(ctx, ana[0].Seq, "", ContactInput{FullName: "Mine"}); !errors.Is(err, ErrConflict) {
+		t.Fatalf("conflict: %v", err)
+	}
+	if !strings.Contains(e.mem.vcf["/u/card/main/x.vcf"], "Ana (phone)") {
+		t.Error("server change overwritten")
+	}
+
+	if err := e.m.DeleteContact(ctx, seq); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := e.mem.vcf[c.Path]; ok {
+		t.Error("still on the server")
+	}
+	if _, _, err := e.st.GetContact(ctx, seq); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("still stored: %v", err)
+	}
+	if _, err := e.m.SaveContact(ctx, 0, "nope", ContactInput{FullName: "x"}); !errors.Is(err, ErrNoAddressBook) {
+		t.Errorf("unknown account: %v", err)
 	}
 }

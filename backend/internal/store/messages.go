@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 )
 
 // MessageHeader is the list/search row: everything but bodies.
@@ -341,4 +342,39 @@ LIMIT ? OFFSET ?`, folderID, limit, offset)
 		out = append(out, h)
 	}
 	return out, total, rows.Err()
+}
+
+// MessagesByAddress returns the newest messages from, to or cc any of the
+// addresses (case-insensitive), at most limit.
+func (s *Store) MessagesByAddress(ctx context.Context, addresses []string, limit int) ([]MessageHeader, error) {
+	var conds []string
+	var args []any
+	for _, a := range addresses {
+		a = strings.ToLower(strings.TrimSpace(a))
+		if a == "" {
+			continue
+		}
+		like := `%"` + escapeLike(a) + `"%` // JSON string value: exact address
+		conds = append(conds, `lower(m.from_address) = ?`, `lower(m.to_json) LIKE ? ESCAPE '\'`, `lower(m.cc_json) LIKE ? ESCAPE '\'`)
+		args = append(args, a, like, like)
+	}
+	if len(conds) == 0 {
+		return nil, nil
+	}
+	args = append(args, limit)
+	rows, err := s.db.QueryContext(ctx, `SELECT `+headerCols+` FROM messages m WHERE `+strings.Join(conds, " OR ")+
+		` ORDER BY m.timestamp_unix DESC LIMIT ?`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []MessageHeader
+	for rows.Next() {
+		h, err := scanHeader(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, h)
+	}
+	return out, rows.Err()
 }

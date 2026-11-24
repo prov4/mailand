@@ -93,3 +93,67 @@ func normETag(e string) string {
 	e = strings.TrimPrefix(e, "W/")
 	return strings.Trim(e, `"`)
 }
+
+// putObject uploads iCalendar/vCard text to path and returns the new ETag (""
+// if the server sends none). create: only if nothing exists there
+// (If-None-Match: *); otherwise only if the server still has etag (If-Match).
+func putObject(ctx context.Context, c webdav.HTTPClient, endpoint, p, contentType, data, etag string, create bool) (string, error) {
+	base, err := url.Parse(endpoint)
+	if err != nil {
+		return "", err
+	}
+	u := &url.URL{Scheme: base.Scheme, Host: base.Host, Path: p}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, u.String(), strings.NewReader(data))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", contentType)
+	if create {
+		req.Header.Set("If-None-Match", "*")
+	} else if etag != "" {
+		req.Header.Set("If-Match", `"`+etag+`"`)
+	}
+	resp, err := c.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
+	switch {
+	case resp.StatusCode == http.StatusPreconditionFailed:
+		return "", ErrConflict
+	case resp.StatusCode >= 200 && resp.StatusCode < 300:
+		return normETag(resp.Header.Get("ETag")), nil
+	}
+	return "", fmt.Errorf("PUT %s: %d %s", p, resp.StatusCode, http.StatusText(resp.StatusCode))
+}
+
+// deleteObject removes path if the server still has etag. A resource that is
+// already gone counts as deleted.
+func deleteObject(ctx context.Context, c webdav.HTTPClient, endpoint, p, etag string) error {
+	base, err := url.Parse(endpoint)
+	if err != nil {
+		return err
+	}
+	u := &url.URL{Scheme: base.Scheme, Host: base.Host, Path: p}
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, u.String(), nil)
+	if err != nil {
+		return err
+	}
+	if etag != "" {
+		req.Header.Set("If-Match", `"`+etag+`"`)
+	}
+	resp, err := c.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
+	switch {
+	case resp.StatusCode == http.StatusPreconditionFailed:
+		return ErrConflict
+	case resp.StatusCode == http.StatusNotFound, resp.StatusCode >= 200 && resp.StatusCode < 300:
+		return nil
+	}
+	return fmt.Errorf("DELETE %s: %d %s", p, resp.StatusCode, http.StatusText(resp.StatusCode))
+}

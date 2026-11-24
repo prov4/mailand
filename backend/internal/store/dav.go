@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"strings"
 )
 
@@ -308,4 +309,53 @@ func splitLines(s string) []string {
 func escapeLike(s string) string {
 	r := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 	return r.Replace(s)
+}
+
+// GetCalendarObject returns the object with seq and its calendar.
+func (s *Store) GetCalendarObject(ctx context.Context, seq int64) (CalendarObject, Calendar, error) {
+	var o CalendarObject
+	var c Calendar
+	var last sql.NullInt64
+	err := s.db.QueryRowContext(ctx, `
+SELECT o.seq, o.calendar_id, o.path, o.etag, o.uid, o.summary, o.first_start, o.last_end, o.data,
+       c.id, c.account_id, c.path, c.name, c.color, c.read_only
+FROM calendar_objects o JOIN calendars c ON c.id = o.calendar_id WHERE o.seq = ?`, seq).Scan(
+		&o.Seq, &o.CalendarID, &o.Path, &o.ETag, &o.UID, &o.Summary, &o.FirstStart, &last, &o.Data,
+		&c.ID, &c.AccountID, &c.Path, &c.Name, &c.Color, &c.ReadOnly)
+	if errors.Is(err, sql.ErrNoRows) {
+		return o, c, ErrNotFound
+	}
+	if last.Valid {
+		o.LastEnd = &last.Int64
+	}
+	return o, c, err
+}
+
+// GetContact returns the contact with seq and its address book.
+func (s *Store) GetContact(ctx context.Context, seq int64) (Contact, AddressBook, error) {
+	var c Contact
+	var b AddressBook
+	var emails, phones string
+	err := s.db.QueryRowContext(ctx, `
+SELECT c.seq, c.address_book_id, c.path, c.etag, c.uid, c.full_name, c.emails, c.phones, c.organization, c.data,
+       b.id, b.account_id, b.path, b.name, b.read_only
+FROM contacts c JOIN address_books b ON b.id = c.address_book_id WHERE c.seq = ?`, seq).Scan(
+		&c.Seq, &c.AddressBookID, &c.Path, &c.ETag, &c.UID, &c.FullName, &emails, &phones, &c.Organization, &c.Data,
+		&b.ID, &b.AccountID, &b.Path, &b.Name, &b.ReadOnly)
+	if errors.Is(err, sql.ErrNoRows) {
+		return c, b, ErrNotFound
+	}
+	c.AccountID = b.AccountID
+	c.Emails, c.Phones = splitLines(emails), splitLines(phones)
+	return c, b, err
+}
+
+// ContactSeq returns the seq of the contact at (addressBookID, path).
+func (s *Store) ContactSeq(ctx context.Context, addressBookID, path string) (int64, error) {
+	var seq int64
+	err := s.db.QueryRowContext(ctx, `SELECT seq FROM contacts WHERE address_book_id=? AND path=?`, addressBookID, path).Scan(&seq)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, ErrNotFound
+	}
+	return seq, err
 }

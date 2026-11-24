@@ -24,6 +24,15 @@ service MailandService {
   rpc ListCalendars(Empty) returns (CalendarList);
   rpc ListEvents(ListEventsRequest) returns (EventList);
   rpc ListContacts(ListContactsRequest) returns (ContactList);
+  // Create (empty contact_id: in account_id's address book) or update a
+  // contact; written to the server, then returned. ABORTED: changed on the server.
+  rpc SaveContact(SaveContactRequest) returns (Contact);
+  rpc DeleteContact(ContactRequest) returns (Empty);
+  // Newest messages from/to/cc any of the addresses (contact details).
+  rpc ListMessagesByAddress(AddressMessagesRequest) returns (MessageHeaderList);
+  // Accept / maybe / decline an invitation (the whole series). The server
+  // notifies the organizer. ABORTED: the event changed on the server meanwhile.
+  rpc RespondToEvent(RespondToEventRequest) returns (Empty);
 
   // Real-time Push Events (New mail, sync status, flag updates)
   rpc SubscribeEvents(Empty) returns (stream DaemonEvent);
@@ -202,8 +211,25 @@ message CalendarEvent {
   int64 end_unix = 8;     // exclusive; all-day events end at local midnight
   bool all_day = 9;
   bool recurring = 10;
-  string organizer = 11;
-  string status = 12;     // "CONFIRMED", "TENTATIVE" or ""
+  string organizer = 11;      // display name, or the address
+  string status = 12;         // "CONFIRMED", "TENTATIVE" or ""
+  string organizer_email = 13;
+  repeated Attendee attendees = 14;
+  string my_status = 15;      // the account's PARTSTAT ("NEEDS-ACTION", "ACCEPTED", ...); "" if not invited
+  bool can_respond = 16;      // invited, not the organizer, calendar writable
+}
+
+message Attendee {
+  string name = 1;
+  string email = 2;
+  string status = 3;  // PARTSTAT: NEEDS-ACTION | ACCEPTED | TENTATIVE | DECLINED | DELEGATED
+  string role = 4;    // REQ-PARTICIPANT | OPT-PARTICIPANT | CHAIR | NON-PARTICIPANT
+  bool is_me = 5;     // the calendar's own account
+}
+
+message RespondToEventRequest {
+  string event_id = 1;  // CalendarEvent.id
+  string status = 2;    // "ACCEPTED" | "TENTATIVE" | "DECLINED"
 }
 
 message EventList {
@@ -224,6 +250,25 @@ message Contact {
   repeated string emails = 5;
   repeated string phones = 6;
   string organization = 7;
+  bool read_only = 8; // its address book cannot be written
+}
+
+message SaveContactRequest {
+  string contact_id = 1;  // "" = new contact
+  string account_id = 2;  // for new contacts: whose address book
+  string full_name = 3;
+  repeated string emails = 4;
+  repeated string phones = 5;
+  string organization = 6;
+}
+
+message ContactRequest {
+  string contact_id = 1;
+}
+
+message AddressMessagesRequest {
+  repeated string addresses = 1;
+  uint32 limit = 2; // default 20, max 200
 }
 
 message ContactList {

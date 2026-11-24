@@ -168,9 +168,17 @@ void CalendarModel::loadEvents()
         std::vector<Ev> evs;
         evs.reserve(resp.events_size());
         for (const auto &e : resp.events()) {
-            evs.push_back({s(e.id()), s(e.calendar_id()), s(e.summary()), s(e.location()), s(e.description()),
-                           s(e.organizer()), s(e.status()), QDateTime::fromSecsSinceEpoch(e.start_unix()),
-                           QDateTime::fromSecsSinceEpoch(e.end_unix()), e.all_day(), e.recurring()});
+            Ev ev{s(e.id()), s(e.calendar_id()), s(e.summary()), s(e.location()), s(e.description()),
+                  s(e.organizer()), s(e.status()), QDateTime::fromSecsSinceEpoch(e.start_unix()),
+                  QDateTime::fromSecsSinceEpoch(e.end_unix()), e.all_day(), e.recurring(),
+                  s(e.organizer_email()), s(e.my_status()), e.can_respond(), {}};
+            for (const auto &a : e.attendees())
+                ev.attendees.append(QVariantMap{{QStringLiteral("name"), s(a.name())},
+                                                {QStringLiteral("email"), s(a.email())},
+                                                {QStringLiteral("status"), s(a.status())},
+                                                {QStringLiteral("role"), s(a.role())},
+                                                {QStringLiteral("isMe"), a.is_me()}});
+            evs.push_back(std::move(ev));
         }
         m_events = std::move(evs);
         ++m_revision;
@@ -197,41 +205,101 @@ QVariantList CalendarModel::eventsOn(const QDate &day, int revision) const
         return a->start < b->start;
     });
 
+    QVariantList out;
+    for (const Ev *e : hits)
+        out.append(toMap(*e));
+    return out;
+}
+
+QVariantMap CalendarModel::eventById(const QString &id, int revision) const
+{
+    Q_UNUSED(revision);
+    for (const Ev &e : m_events)
+        if (e.id == id)
+            return toMap(e);
+    return {};
+}
+
+namespace {
+// Events are "<object seq>-<start>"; all occurrences of one series share the seq.
+QString objectKey(const QString &eventId) { return eventId.section(QLatin1Char('-'), 0, 0); }
+} // namespace
+
+void CalendarModel::setMyStatus(const QString &key, const QString &status)
+{
+    for (Ev &e : m_events) {
+        if (objectKey(e.id) != key)
+            continue;
+        e.myStatus = status;
+        for (QVariant &v : e.attendees) {
+            QVariantMap a = v.toMap();
+            if (a.value(QStringLiteral("isMe")).toBool()) {
+                a.insert(QStringLiteral("status"), status);
+                v = a;
+            }
+        }
+    }
+    ++m_revision;
+    emit revisionChanged();
+}
+
+void CalendarModel::respond(const QString &eventId, const QString &status)
+{
+    QString previous;
+    for (const Ev &e : m_events)
+        if (e.id == eventId)
+            previous = e.myStatus;
+    const QString key = objectKey(eventId);
+    setMyStatus(key, status);
+    Rpc::instance()->respondToEvent(eventId, status, this,
+                                    [this, key, previous](const grpc::Status &st, const mailand::v1::Empty &) {
+                                        if (st.ok())
+                                            return; // CALENDARS_UPDATED reloads the server's version
+                                        setMyStatus(key, previous);
+                                        Rpc::instance()->reportError(QStringLiteral("Could not send your response: ")
+                                                                     + Rpc::statusText(st));
+                                    });
+}
+
+QVariantMap CalendarModel::toMap(const Ev &ev) const
+{
+    const Ev *e = &ev;
     const QLocale loc;
     const QString fmt = loc.timeFormat(QLocale::ShortFormat);
-    QVariantList out;
-    for (const Ev *e : hits) {
-        const bool multiDay = e->allDay ? e->start.date().daysTo(e->end.date()) > 1
-                                        : e->start.date() != e->end.addSecs(-1).date();
-        QString timeText;
-        if (e->allDay) {
-            timeText = QStringLiteral("All day");
-        } else if (multiDay) {
-            timeText = loc.toString(e->start, QStringLiteral("d MMM ") + fmt) + QStringLiteral(" – ")
-                       + loc.toString(e->end, QStringLiteral("d MMM ") + fmt);
-        } else if (e->end > e->start) {
-            timeText = loc.toString(e->start.time(), fmt) + QStringLiteral(" – ") + loc.toString(e->end.time(), fmt);
-        } else {
-            timeText = loc.toString(e->start.time(), fmt);
-        }
-        const Cal *c = calendar(e->calendarId);
-        out.append(QVariantMap{
-            {QStringLiteral("id"), e->id},
-            {QStringLiteral("summary"), e->summary.isEmpty() ? QStringLiteral("(no title)") : e->summary},
-            {QStringLiteral("location"), e->location},
-            {QStringLiteral("description"), e->description},
-            {QStringLiteral("organizer"), e->organizer},
-            {QStringLiteral("status"), e->status},
-            {QStringLiteral("start"), e->start},
-            {QStringLiteral("end"), e->end},
-            {QStringLiteral("allDay"), e->allDay},
-            {QStringLiteral("recurring"), e->recurring},
-            {QStringLiteral("multiDay"), multiDay},
-            {QStringLiteral("startText"), e->allDay ? QString() : loc.toString(e->start.time(), fmt)},
-            {QStringLiteral("timeText"), timeText},
-            {QStringLiteral("color"), colorOf(e->calendarId)},
-            {QStringLiteral("calendarName"), c ? c->name : QString()},
-        });
+    const bool multiDay = e->allDay ? e->start.date().daysTo(e->end.date()) > 1
+                                    : e->start.date() != e->end.addSecs(-1).date();
+    QString timeText;
+    if (e->allDay) {
+        timeText = QStringLiteral("All day");
+    } else if (multiDay) {
+        timeText = loc.toString(e->start, QStringLiteral("d MMM ") + fmt) + QStringLiteral(" – ")
+                   + loc.toString(e->end, QStringLiteral("d MMM ") + fmt);
+    } else if (e->end > e->start) {
+        timeText = loc.toString(e->start.time(), fmt) + QStringLiteral(" – ") + loc.toString(e->end.time(), fmt);
+    } else {
+        timeText = loc.toString(e->start.time(), fmt);
     }
-    return out;
+    const Cal *c = calendar(e->calendarId);
+    return QVariantMap{
+        {QStringLiteral("organizerEmail"), e->organizerEmail},
+        {QStringLiteral("myStatus"), e->myStatus},
+        {QStringLiteral("canRespond"), e->canRespond},
+        {QStringLiteral("attendees"), e->attendees},
+        {QStringLiteral("dateText"), loc.toString(e->start.date(), QLocale::LongFormat)},
+        {QStringLiteral("id"), e->id},
+        {QStringLiteral("summary"), e->summary.isEmpty() ? QStringLiteral("(no title)") : e->summary},
+        {QStringLiteral("location"), e->location},
+        {QStringLiteral("description"), e->description},
+        {QStringLiteral("organizer"), e->organizer},
+        {QStringLiteral("status"), e->status},
+        {QStringLiteral("start"), e->start},
+        {QStringLiteral("end"), e->end},
+        {QStringLiteral("allDay"), e->allDay},
+        {QStringLiteral("recurring"), e->recurring},
+        {QStringLiteral("multiDay"), multiDay},
+        {QStringLiteral("startText"), e->allDay ? QString() : loc.toString(e->start.time(), fmt)},
+        {QStringLiteral("timeText"), timeText},
+        {QStringLiteral("color"), colorOf(e->calendarId)},
+        {QStringLiteral("calendarName"), c ? c->name : QString()},
+    };
 }

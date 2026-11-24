@@ -273,6 +273,49 @@ void Rpc::listEvents(qint64 startUnix, qint64 endUnix, QObject *ctx, Done<mailan
         ctx, std::move(done), 20000);
 }
 
+void Rpc::respondToEvent(const QString &eventId, const QString &status, QObject *ctx,
+                         Done<mailand::v1::Empty> done)
+{
+    mailand::v1::RespondToEventRequest req;
+    req.set_event_id(eventId.toStdString());
+    req.set_status(status.toStdString());
+    call<mailand::v1::Empty>(
+        std::move(req),
+        [](auto *a, auto *cx, const auto *rq, auto *rs, auto cb) { a->RespondToEvent(cx, rq, rs, std::move(cb)); },
+        ctx, std::move(done), 30000);
+}
+
+void Rpc::saveContact(mailand::v1::SaveContactRequest req, QObject *ctx, Done<mailand::v1::Contact> done)
+{
+    call<mailand::v1::Contact>(
+        std::move(req),
+        [](auto *a, auto *cx, const auto *rq, auto *rs, auto cb) { a->SaveContact(cx, rq, rs, std::move(cb)); },
+        ctx, std::move(done), 30000);
+}
+
+void Rpc::deleteContact(const QString &contactId, QObject *ctx, Done<mailand::v1::Empty> done)
+{
+    mailand::v1::ContactRequest req;
+    req.set_contact_id(contactId.toStdString());
+    call<mailand::v1::Empty>(
+        std::move(req),
+        [](auto *a, auto *cx, const auto *rq, auto *rs, auto cb) { a->DeleteContact(cx, rq, rs, std::move(cb)); },
+        ctx, std::move(done), 30000);
+}
+
+void Rpc::listMessagesByAddress(const QStringList &addresses, quint32 limit, QObject *ctx,
+                                Done<mailand::v1::MessageHeaderList> done)
+{
+    mailand::v1::AddressMessagesRequest req;
+    for (const QString &a : addresses)
+        req.add_addresses(a.toStdString());
+    req.set_limit(limit);
+    call<mailand::v1::MessageHeaderList>(
+        std::move(req),
+        [](auto *a, auto *cx, const auto *rq, auto *rs, auto cb) { a->ListMessagesByAddress(cx, rq, rs, std::move(cb)); },
+        ctx, std::move(done));
+}
+
 void Rpc::listContacts(const QString &query, quint32 limit, bool emailOnly, QObject *ctx,
                        Done<mailand::v1::ContactList> done)
 {

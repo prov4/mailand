@@ -10,6 +10,7 @@ FocusScope {
     id: root
 
     required property MessageView message
+    signal addSenderToContacts(string name, string email)
     property bool remoteBlocked: false
     readonly property bool hasMessage: root.message.messageId.length > 0
 
@@ -91,6 +92,18 @@ FocusScope {
                     color: Theme.text
                     font.pixelSize: Theme.fontBody
                     elide: Text.ElideRight
+                }
+                Text {
+                    id: addSender
+                    text: "+ Contact"
+                    color: addHover.hovered ? Theme.accent : Theme.textFaint
+                    font.pixelSize: Theme.fontSmall
+                    visible: root.message.fromAddress.length > 0
+                    HoverHandler { id: addHover; cursorShape: Qt.PointingHandCursor }
+                    TapHandler { onTapped: root.addSenderToContacts(root.message.fromName, root.message.fromAddress) }
+                    ToolTip.visible: addHover.hovered
+                    ToolTip.text: "Add the sender to your contacts"
+                    ToolTip.delay: 400
                 }
                 Text {
                     text: root.message.dateText

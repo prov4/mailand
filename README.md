@@ -2,7 +2,7 @@
 
 A fast, keyboard-driven mail, calendar and contacts app for Hyprland / Wayland, built for Omarchy. It has no GNOME, GTK or Electron dependencies.
 
-**Version 0.2.0**: mail (IMAP/SMTP, Gmail via OAuth2), calendars (CalDAV) and contacts (CardDAV).
+**Version 0.3.0**: mail (IMAP/SMTP, Gmail via OAuth2), calendars with invitations (CalDAV), and editable contacts (CardDAV).
 
 mailand is two programs:
 
@@ -87,8 +87,8 @@ make clean    # remove build/
 Check what you built:
 
 ```sh
-build/bin/mailand-daemon version     # mailand-daemon 0.2.0
-build/frontend/mailand-ui --version  # mailand-ui 0.2.0
+build/bin/mailand-daemon version     # mailand-daemon 0.3.0
+build/frontend/mailand-ui --version  # mailand-ui 0.3.0
 ```
 
 The version comes from the single `VERSION` file at the repository root. The Go build (`-ldflags -X main.version`), CMake and the PKGBUILD all read it. To release, edit `VERSION`.
@@ -255,11 +255,17 @@ A month grid (weeks start on Monday) with an agenda for the selected day. It sho
 
 `h`/`l` previous/next day · `k`/`j` previous/next week · `p`/`n` previous/next month · `t` today
 
-The calendar is read-only in 0.2.0: create and edit events in your provider's app for now.
+**Event details and invitations.** Click an event (or press Enter for the selected day's first event) to see the time, place, organizer, description and every guest with their answer. If you're invited, answer **Yes / Maybe / No** with the buttons or `y` / `m` / `n`. Your answer is written to the event on the server, and the server notifies the organizer (Google does this). For a repeating event, the answer applies to the whole series. Unanswered invitations have an outline in the month grid and an "Invitation" badge in the agenda; events you declined are faded and struck through. If the organizer changed the event since the last sync, mailand refuses to overwrite it, refreshes it, and asks you to try again.
+
+Creating and editing your own events isn't available yet; use your provider's app for that.
 
 ### Contacts
 
-A searchable list (name, email or organization) and a detail panel. `j`/`k` move, `/` searches, `c` or Enter writes an email to the selected contact. Clicking an email address does the same.
+A searchable list (name, email or organization) and a detail panel with emails, phone numbers and **recent mail** with that person; click a message to open it.
+
+- `n` or **+ New** creates a contact, `e` or **Edit** changes the selected one, and the editor has **Delete**. Changes are written to your address book on the server (Google Contacts or your CardDAV server). Fields mailand doesn't show, like photos, addresses and birthdays, are kept as they are.
+- **+ Contact** next to the sender in the reader adds the sender. If the address is already a contact, that contact is opened for editing instead of creating a duplicate.
+- `c` or Enter writes an email to the selected contact; clicking an email address does the same.
 
 ### Keyboard reference
 
@@ -285,9 +291,12 @@ A searchable list (name, email or organization) and a detail panel. `j`/`k` move
 | **Calendar** | |
 | `h` / `l`, `k` / `j`, `p` / `n` | Day, week, month back / forward |
 | `t` | Today |
+| `Enter` / click | Event details |
+| `y` / `m` / `n` | Answer an invitation: yes / maybe / no (in event details) |
 | **Contacts** | |
 | `j` / `k`, `/` | Move, search |
 | `c` / `Enter` | Write to contact |
+| `n` / `e` | New contact / edit contact (`Ctrl+Enter` saves) |
 
 ### Hyprland
 
@@ -313,6 +322,8 @@ Start with the log: `journalctl --user -u mailand-daemon -f`. Each sync pass log
 | Gmail shows no mail | Gmail settings → Labels → **Show in IMAP** for **All Mail**. |
 | Red banner "needs re-authentication" / `reauth_required` | Google revoked or expired the token (consent screen in *Testing*, password change). Run `mailand-daemon login <id>`, then press Send/Receive. |
 | `calendar: access denied (403)` or `contacts: access denied (403)` | Enable the **CalDAV API** / **Google Contacts CardDAV API** in Cloud Console, check the scopes on the consent screen, then run `mailand-daemon login <id>` again. |
+| "changed on the server; try again" when answering an invitation or saving a contact | Someone else changed it since the last sync. mailand already refreshed it: check the new version and try again. |
+| "this address book is read-only" | The server doesn't let you edit that address book (shared or directory lists). |
 | Calendar or contacts empty for a non-Google account | Check `caldav_url` / `carddav_url`. Try the server's documented DAV URL, then look at the journal for the discovery error. |
 | High CPU during the first sync | Expected while a large mailbox downloads (parsing and indexing). The status bar shows the messages left. After that the daemon is idle. |
 | Config errors | The journal names the exact key and line. Unknown keys and secret-like keys are rejected. |
@@ -346,7 +357,9 @@ Useful loops:
 make test                                   # Go tests (sync engines against in-process IMAP/CalDAV/CardDAV servers)
 make proto                                  # after editing proto/mailand.proto
 build/bin/mailand-daemon -offline &         # serve seeded data
-build/frontend/mailand-ui --selftest        # headless end-to-end check against the running daemon
+build/frontend/mailand-ui --selftest        # headless end-to-end check against the running daemon (read-only)
+build/frontend/mailand-ui --selftest --write  # also sends mail, answers an invitation, edits contacts:
+                                              # only against `mailand-daemon -offline` with seeded data
 build/frontend/mailand-ui --screenshot out.png --view calendar   # render a view offscreen
 ```
 

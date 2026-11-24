@@ -50,12 +50,14 @@ type Sender interface {
 // Server implements pb.MailandServiceServer on top of the store.
 type Server struct {
 	pb.UnimplementedMailandServiceServer
-	st     *store.Store
-	sync   Syncer // may be nil
-	sendMu sync.RWMutex
-	sender Sender // may be nil; see SetSender
-	broker *Broker
-	log    *slog.Logger
+	st        *store.Store
+	sync      Syncer // may be nil
+	sendMu    sync.RWMutex
+	sender    Sender    // may be nil; see SetSender
+	responder Responder // may be nil; see SetResponder
+	contacts  ContactEditor
+	broker    *Broker
+	log       *slog.Logger
 
 	stop     chan struct{} // closed by Close to end SubscribeEvents streams
 	stopOnce sync.Once
