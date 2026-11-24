@@ -2,35 +2,60 @@ package rpc
 
 import (
 	"context"
-	"fmt"
-	"strconv"
+	"encoding/json"
+	"errors"
+	"log/slog"
+	"net/mail"
+	"os"
 	"strings"
 	"sync"
-	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	mailpkg "mailand/backend/internal/mail"
 	"mailand/backend/internal/rpc/pb"
+	"mailand/backend/internal/store"
 )
 
 const (
-	defaultLimit  = 50
-	maxLimit      = 500
-	mockPerFolder = 120
+	defaultLimit       = 50
+	maxLimit           = 500
+	defaultSearchLimit = 50
+	maxSearchLimit     = 200
 )
 
-// Server implements pb.MailandServiceServer with mock data (Milestone 1).
-// Unimplemented RPCs return codes.Unimplemented via the embedded type.
+// Syncer is implemented by mail.Manager.
+type Syncer interface {
+	TriggerSync(accountID string) error
+	SetFlags(ctx context.Context, messageIDs []string, isRead, isFlagged *bool) error
+}
+
+// Server implements pb.MailandServiceServer on top of the store.
+// SendMessage stays Unimplemented (Milestone 4).
 type Server struct {
 	pb.UnimplementedMailandServiceServer
+	st     *store.Store
+	sync   Syncer // may be nil
+	broker *Broker
+	log    *slog.Logger
+
 	stop     chan struct{} // closed by Close to end SubscribeEvents streams
 	stopOnce sync.Once
 }
 
-// NewServer returns a mock MailandService.
-func NewServer() *Server { return &Server{stop: make(chan struct{})} }
+// NewServer returns a MailandService. sync may be nil (no accounts / tests):
+// SetMessageFlags and TriggerSync then return FailedPrecondition.
+func NewServer(st *store.Store, sync Syncer, broker *Broker, log *slog.Logger) *Server {
+	if log == nil {
+		log = slog.Default()
+	}
+	if broker == nil {
+		broker = NewBroker()
+	}
+	return &Server{st: st, sync: sync, broker: broker, log: log, stop: make(chan struct{})}
+}
 
 // Register creates a grpc.Server with s registered.
 func (s *Server) Register() *grpc.Server {
@@ -39,146 +64,254 @@ func (s *Server) Register() *grpc.Server {
 	return g
 }
 
-// Close ends open event streams; call before GracefulStop.
+// Close ends open event streams; call before GracefulStop. It does not close
+// the Broker (the owner does).
 func (s *Server) Close() {
 	s.stopOnce.Do(func() { close(s.stop) })
 }
 
-var mockAccounts = []*pb.Account{
-	{Id: "acc-gmail", Name: "Personal Gmail", Email: "me@gmail.example"},
-	{Id: "acc-work", Name: "Work", Email: "me@work.example"},
+// internal logs err and returns a generic Internal status (no paths/SQL leaked).
+func (s *Server) internal(op string, err error) error {
+	s.log.Error("rpc failed", "op", op, "err", err)
+	return status.Error(codes.Internal, "internal error")
 }
 
-type mockFolder struct {
-	suffix, name, path string
-	unread             uint32
-}
-
-var mockFolders = []mockFolder{
-	{"inbox", "INBOX", "INBOX", 7},
-	{"sent", "Sent", "Sent", 0},
-	{"label-projects", "Projects", "Projects", 3},
-}
-
-func accountExists(id string) bool {
-	for _, a := range mockAccounts {
-		if a.Id == id {
-			return true
-		}
+func (s *Server) mapErr(op string, err error, what string) error {
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, store.ErrNotFound):
+		return status.Errorf(codes.NotFound, "%s not found", what)
+	case errors.Is(err, context.Canceled):
+		return status.Error(codes.Canceled, "canceled")
+	case errors.Is(err, context.DeadlineExceeded):
+		return status.Error(codes.DeadlineExceeded, "deadline exceeded")
 	}
-	return false
+	return s.internal(op, err)
 }
 
-func folderID(acc, suffix string) string { return acc + ":" + suffix }
-
-// splitFolderID parses "<account>:<suffix>" and validates both parts.
-func splitFolderID(id string) (acc, suffix string, ok bool) {
-	acc, suffix, found := strings.Cut(id, ":")
-	if !found || !accountExists(acc) {
-		return "", "", false
-	}
-	for _, f := range mockFolders {
-		if f.suffix == suffix {
-			return acc, suffix, true
-		}
-	}
-	return "", "", false
-}
-
-func messageID(folder string, n int) string { return fmt.Sprintf("%s/%d", folder, n) }
-
-// mockHeader builds the n-th (1-based, newest first) header of a folder.
-func mockHeader(folder string, n int) *pb.MessageHeader {
+func header(h store.MessageHeader) *pb.MessageHeader {
 	return &pb.MessageHeader{
-		Id:             messageID(folder, n),
-		FolderId:       folder,
-		Uid:            uint32(mockPerFolder - n + 1),
-		Subject:        fmt.Sprintf("Mock message #%d", n),
-		FromName:       "Alice Example",
-		FromAddress:    "alice@example.com",
-		TimestampUnix:  time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC).Add(-time.Duration(n) * time.Hour).Unix(),
-		IsRead:         n%3 != 0,
-		IsFlagged:      n%10 == 0,
-		HasAttachments: n%7 == 0,
-		Snippet:        fmt.Sprintf("This is the preview of mock message #%d.", n),
-		FolderIds:      []string{folder},
+		Id: h.ID, FolderId: h.FolderID, Uid: h.UID, Subject: h.Subject,
+		FromName: h.FromName, FromAddress: h.FromAddress, TimestampUnix: h.TimestampUnix,
+		IsRead: h.IsRead, IsFlagged: h.IsFlagged, HasAttachments: h.HasAttachments, Snippet: h.Snippet,
 	}
 }
 
-func (s *Server) ListAccounts(context.Context, *pb.Empty) (*pb.AccountList, error) {
-	return &pb.AccountList{Accounts: mockAccounts}, nil
+func (s *Server) ListAccounts(ctx context.Context, _ *pb.Empty) (*pb.AccountList, error) {
+	accs, err := s.st.ListAccounts(ctx)
+	if err != nil {
+		return nil, s.mapErr("ListAccounts", err, "account")
+	}
+	out := &pb.AccountList{}
+	for _, a := range accs {
+		out.Accounts = append(out.Accounts, &pb.Account{Id: a.ID, Name: a.Name, Email: a.Email})
+	}
+	return out, nil
 }
 
-func (s *Server) ListFolders(_ context.Context, req *pb.AccountRequest) (*pb.FolderList, error) {
+func (s *Server) ListFolders(ctx context.Context, req *pb.AccountRequest) (*pb.FolderList, error) {
 	if req.AccountId == "" {
 		return nil, status.Error(codes.InvalidArgument, "account_id is required")
 	}
-	if !accountExists(req.AccountId) {
-		return nil, status.Errorf(codes.NotFound, "account %q not found", req.AccountId)
+	if _, err := s.st.GetAccount(ctx, req.AccountId); err != nil {
+		return nil, s.mapErr("ListFolders", err, "account")
+	}
+	fs, err := s.st.ListFolders(ctx, req.AccountId)
+	if err != nil {
+		return nil, s.mapErr("ListFolders", err, "account")
 	}
 	out := &pb.FolderList{}
-	for _, f := range mockFolders {
+	for _, f := range fs {
 		out.Folders = append(out.Folders, &pb.Folder{
-			Id: folderID(req.AccountId, f.suffix), AccountId: req.AccountId,
-			Name: f.name, Path: f.path, UnreadCount: f.unread,
+			Id: f.ID, AccountId: f.AccountID, Name: f.Name, Path: f.Path, UnreadCount: uint32(max(f.UnreadCount, 0)),
 		})
 	}
 	return out, nil
 }
 
-func (s *Server) ListMessages(_ context.Context, req *pb.ListMessagesRequest) (*pb.MessageHeaderList, error) {
+// ListMessages returns one page, newest first. For cost reasons the returned
+// headers have folder_id (the source mailbox) but leave folder_ids empty; use
+// GetMessage for the full membership list.
+func (s *Server) ListMessages(ctx context.Context, req *pb.ListMessagesRequest) (*pb.MessageHeaderList, error) {
 	if req.FolderId == "" {
 		return nil, status.Error(codes.InvalidArgument, "folder_id is required")
 	}
-	if _, _, ok := splitFolderID(req.FolderId); !ok {
-		return nil, status.Errorf(codes.NotFound, "folder %q not found", req.FolderId)
+	if _, err := s.st.GetFolder(ctx, req.FolderId); err != nil {
+		return nil, s.mapErr("ListMessages", err, "folder")
 	}
 	limit := int(req.Limit)
 	if limit == 0 {
 		limit = defaultLimit
 	}
 	limit = min(limit, maxLimit)
-
-	out := &pb.MessageHeaderList{TotalCount: mockPerFolder}
-	for n := int(req.Offset) + 1; n <= mockPerFolder && len(out.Messages) < limit; n++ {
-		out.Messages = append(out.Messages, mockHeader(req.FolderId, n))
+	hs, total, err := s.st.ListMessages(ctx, req.FolderId, limit, int(req.Offset))
+	if err != nil {
+		return nil, s.mapErr("ListMessages", err, "folder")
+	}
+	out := &pb.MessageHeaderList{TotalCount: uint32(total)}
+	for _, h := range hs {
+		out.Messages = append(out.Messages, header(h))
 	}
 	return out, nil
 }
 
-func (s *Server) GetMessage(_ context.Context, req *pb.MessageRequest) (*pb.MessageDetail, error) {
+// formatAddrs decodes a to_json/cc_json column. The sync engine writes a JSON
+// array of {Name, Address}; plain string elements are tolerated. Garbage yields nil.
+func formatAddrs(js string) []string {
+	if strings.TrimSpace(js) == "" {
+		return nil
+	}
+	var raw []json.RawMessage
+	if err := json.Unmarshal([]byte(js), &raw); err != nil {
+		return nil
+	}
+	var out []string
+	for _, r := range raw {
+		var a struct{ Name, Address string }
+		if err := json.Unmarshal(r, &a); err != nil {
+			var str string
+			if json.Unmarshal(r, &str) == nil && str != "" {
+				out = append(out, str)
+			}
+			continue
+		}
+		switch {
+		case a.Address == "":
+			continue
+		case a.Name == "":
+			out = append(out, a.Address)
+		default:
+			out = append(out, (&mail.Address{Name: a.Name, Address: a.Address}).String())
+		}
+	}
+	return out
+}
+
+func (s *Server) attachments(m store.Message) []*pb.AttachmentInfo {
+	if m.RawBlobPath == "" {
+		return nil
+	}
+	f, err := os.Open(m.RawBlobPath)
+	if err != nil {
+		s.log.Debug("raw blob unavailable", "message", m.ID, "err", err)
+		return nil
+	}
+	defer f.Close()
+	p, err := mailpkg.Parse(f)
+	if err != nil || p == nil {
+		s.log.Debug("raw blob unparsable", "message", m.ID, "err", err)
+		return nil
+	}
+	var out []*pb.AttachmentInfo
+	for _, a := range p.Attachments {
+		if a.Inline {
+			continue
+		}
+		out = append(out, &pb.AttachmentInfo{Id: a.PartPath, Filename: a.Filename, MimeType: a.MIMEType, SizeBytes: uint64(max(a.Size, 0))})
+	}
+	return out
+}
+
+func (s *Server) GetMessage(ctx context.Context, req *pb.MessageRequest) (*pb.MessageDetail, error) {
 	if req.MessageId == "" {
 		return nil, status.Error(codes.InvalidArgument, "message_id is required")
 	}
-	folder, num, ok := strings.Cut(req.MessageId, "/")
-	n, err := strconv.Atoi(num)
-	if _, _, fok := splitFolderID(folder); !ok || !fok || err != nil || n < 1 || n > mockPerFolder || num != strconv.Itoa(n) {
-		return nil, status.Errorf(codes.NotFound, "message %q not found", req.MessageId)
+	m, err := s.st.GetMessage(ctx, req.MessageId)
+	if err != nil {
+		return nil, s.mapErr("GetMessage", err, "message")
 	}
-	h := mockHeader(folder, n)
+	h := header(m.MessageHeader)
+	h.FolderIds = m.FolderIDs
 	return &pb.MessageDetail{
 		Header:      h,
-		ToAddresses: []string{"me@example.com"},
-		CcAddresses: []string{"bob@example.com"},
-		TextBody:    fmt.Sprintf("Hello,\n\nThis is the body of mock message #%d.\n\nAlice\n", n),
-		HtmlBody:    fmt.Sprintf("<p>Hello,</p><p>This is the body of <b>mock message #%d</b>.</p><p>Alice</p>", n),
-		Attachments: attachmentsFor(h),
+		ToAddresses: formatAddrs(m.ToJSON),
+		CcAddresses: formatAddrs(m.CcJSON),
+		TextBody:    m.TextBody,
+		HtmlBody:    m.HTMLBody,
+		Attachments: s.attachments(m),
 	}, nil
 }
 
-func attachmentsFor(h *pb.MessageHeader) []*pb.AttachmentInfo {
-	if !h.HasAttachments {
-		return nil
+// SearchMessages runs a full-text search; each email appears once. The snippet
+// of every header is the match snippet with matches wrapped in
+// store.HighlightStart ("\x02") and store.HighlightEnd ("\x03"); the UI must
+// render these markers (and strip them elsewhere). folder_ids is left empty.
+func (s *Server) SearchMessages(ctx context.Context, req *pb.SearchRequest) (*pb.MessageHeaderList, error) {
+	limit := int(req.Limit)
+	if limit == 0 {
+		limit = defaultSearchLimit
 	}
-	return []*pb.AttachmentInfo{{Id: h.Id + "#1", Filename: "notes.pdf", MimeType: "application/pdf", SizeBytes: 48213}}
+	limit = min(limit, maxSearchLimit)
+	hits, err := s.st.Search(ctx, req.Query, req.AccountId, limit)
+	if err != nil {
+		return nil, s.mapErr("SearchMessages", err, "account")
+	}
+	out := &pb.MessageHeaderList{TotalCount: uint32(len(hits))}
+	for _, h := range hits {
+		ph := header(h.MessageHeader)
+		ph.Snippet = h.MatchSnippet
+		out.Messages = append(out.Messages, ph)
+	}
+	return out, nil
 }
 
-// SubscribeEvents holds the stream open; no events are produced yet.
+func (s *Server) SetMessageFlags(ctx context.Context, req *pb.SetFlagsRequest) (*pb.Empty, error) {
+	if len(req.MessageIds) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "message_ids is required")
+	}
+	for _, id := range req.MessageIds {
+		if id == "" {
+			return nil, status.Error(codes.InvalidArgument, "message_ids must not contain empty ids")
+		}
+	}
+	if req.IsRead == nil && req.IsFlagged == nil {
+		return nil, status.Error(codes.InvalidArgument, "at least one of is_read, is_flagged is required")
+	}
+	if s.sync == nil {
+		return nil, status.Error(codes.FailedPrecondition, "no accounts configured")
+	}
+	if err := s.sync.SetFlags(ctx, req.MessageIds, req.IsRead, req.IsFlagged); err != nil {
+		return nil, s.mapErr("SetMessageFlags", err, "message")
+	}
+	return &pb.Empty{}, nil
+}
+
+func (s *Server) TriggerSync(ctx context.Context, req *pb.AccountRequest) (*pb.Empty, error) {
+	if req.AccountId == "" {
+		return nil, status.Error(codes.InvalidArgument, "account_id is required")
+	}
+	if s.sync == nil {
+		return nil, status.Error(codes.FailedPrecondition, "no accounts configured")
+	}
+	// Check existence in the store so unknown accounts map to NotFound
+	// regardless of how the Syncer reports them.
+	if _, err := s.st.GetAccount(ctx, req.AccountId); err != nil {
+		return nil, s.mapErr("TriggerSync", err, "account")
+	}
+	if err := s.sync.TriggerSync(req.AccountId); err != nil {
+		return nil, s.mapErr("TriggerSync", err, "account")
+	}
+	return &pb.Empty{}, nil
+}
+
+// SubscribeEvents streams broker events until the client goes away or Close.
 func (s *Server) SubscribeEvents(_ *pb.Empty, stream grpc.ServerStreamingServer[pb.DaemonEvent]) error {
-	select {
-	case <-stream.Context().Done():
-		return stream.Context().Err()
-	case <-s.stop:
-		return status.Error(codes.Unavailable, "server shutting down")
+	ch, cancel := s.broker.Subscribe()
+	defer cancel()
+	for {
+		select {
+		case <-stream.Context().Done():
+			return stream.Context().Err()
+		case <-s.stop:
+			return status.Error(codes.Unavailable, "server shutting down")
+		case ev, ok := <-ch:
+			if !ok {
+				return status.Error(codes.Unavailable, "event stream closed")
+			}
+			if err := stream.Send(ev); err != nil {
+				return err
+			}
+		}
 	}
 }

@@ -3,7 +3,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
+	"io/fs"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -11,7 +13,10 @@ import (
 	"time"
 
 	"mailand/backend/internal/config"
+	"mailand/backend/internal/mail"
 	"mailand/backend/internal/rpc"
+	"mailand/backend/internal/rpc/pb"
+	"mailand/backend/internal/store"
 )
 
 const shutdownTimeout = 5 * time.Second
@@ -31,25 +36,57 @@ func main() {
 }
 
 func run(log *slog.Logger, socket string) error {
+	cfg, err := config.Load(config.ConfigPath())
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		log.Warn("no config file; starting with zero accounts", "path", config.ConfigPath())
+		cfg = &config.Config{}
+	case err != nil:
+		return err
+	}
+
+	// Bind first so a second daemon fails before touching the database.
 	lis, err := rpc.ListenUnix(socket)
 	if err != nil {
 		return err
 	}
 	defer os.Remove(socket)
 
-	srv := rpc.NewServer()
-	g := srv.Register()
+	st, err := store.Open(config.DBPath())
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+
+	broker := rpc.NewBroker()
+	defer broker.Close()
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	// A nil *mail.Manager must not be stored in the interface: rpc checks
+	// syncer == nil to report FailedPrecondition when there are no accounts.
+	var syncer rpc.Syncer
+	var mgr *mail.Manager
+	if len(cfg.Accounts) > 0 {
+		mgr = mail.NewManager(cfg, st, config.BlobDir(), func(ev mail.Event) {
+			broker.Publish(toPB(ev)) // non-blocking
+		}, log)
+		if err := mgr.Start(ctx); err != nil {
+			return err
+		}
+		syncer = mgr
+	}
+
+	srv := rpc.NewServer(st, syncer, broker, log)
+	g := srv.Register()
+
 	errc := make(chan error, 1)
 	go func() { errc <- g.Serve(lis) }()
-	log.Info("listening", "socket", socket)
+	log.Info("listening", "socket", socket, "accounts", len(cfg.Accounts))
 
 	select {
-	case err := <-errc:
-		return err
+	case err = <-errc:
 	case <-ctx.Done():
 	}
 
@@ -63,5 +100,23 @@ func run(log *slog.Logger, socket string) error {
 		log.Warn("graceful stop timed out, forcing")
 		g.Stop()
 	}
-	return nil
+	if mgr != nil {
+		mgr.Stop() // before st.Close (deferred) so workers never write to a closed DB
+	}
+	return err
+}
+
+func toPB(ev mail.Event) *pb.DaemonEvent {
+	t := pb.DaemonEvent_ERROR
+	switch ev.Type {
+	case mail.EventSyncStarted:
+		t = pb.DaemonEvent_SYNC_STARTED
+	case mail.EventSyncFinished:
+		t = pb.DaemonEvent_SYNC_FINISHED
+	case mail.EventNewMessages:
+		t = pb.DaemonEvent_NEW_MESSAGES
+	case mail.EventFlagsUpdated:
+		t = pb.DaemonEvent_FLAGS_UPDATED
+	}
+	return &pb.DaemonEvent{Type: t, AccountId: ev.AccountID, FolderId: ev.FolderID, Detail: ev.Detail}
 }

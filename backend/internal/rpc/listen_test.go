@@ -10,7 +10,12 @@ import (
 
 func sockPath(t *testing.T) string {
 	// Keep it short: sun_path is limited to ~108 bytes.
-	return filepath.Join(t.TempDir(), "m.sock")
+	d, err := os.MkdirTemp("/tmp", "mrpc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(d) })
+	return filepath.Join(d, "m.sock")
 }
 
 func TestListenUnixMode0600(t *testing.T) {

@@ -369,6 +369,7 @@ Gmail exposes each label as an IMAP folder, so the same email appears in INBOX, 
  * **Change detection:** use CONDSTORE (`CHANGEDSINCE highest_modseq`) on All Mail to pick up label and flag changes without refetching everything.
  * **Listing & search:** `ListMessages(folder_id)` reads from `message_folders` joined to `messages`. Search hits `messages` once per email, so there are no duplicates.
  * **Non-Gmail accounts** use the same tables: every folder is a sync source and each message has exactly one `message_folders` row.
+ * **Implementation status (Milestone 2):** go-imap v2 beta.9 cannot fetch `X-GM-MSGID`/`X-GM-THRID`/`X-GM-LABELS`, so the fallback in `backend/internal/mail/gmail.go` is used: messages are keyed by (All Mail folder, uid) — still one copy per email — and label membership is built by fetching UID + ENVELOPE (Message-ID only) per label folder and matching by Message-ID. `gm_msgid`/`gm_thrid` stay NULL until go-imap gains X-GM support. Requires "Show in IMAP" enabled for All Mail in Gmail settings.
 
 ### E. Gmail via OAuth2 (required from Milestone 2)
 Gmail is the primary target account and must work with OAuth2 from the start. Microsoft/Outlook OAuth is out of scope. Password auth remains available for other providers.
