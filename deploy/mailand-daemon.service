@@ -1,0 +1,59 @@
+[Unit]
+Description=Mailand mail daemon
+# The daemon needs only the session D-Bus (Secret Service keyring) and
+# $XDG_RUNTIME_DIR; it does not need a graphical session, so it is not tied
+# to graphical-session.target and can sync mail before the UI is opened.
+After=dbus.socket
+Wants=dbus.socket
+
+[Service]
+Type=simple
+# The ProtectSystem=strict sandbox below requires the data dir to exist before
+# it is bind-mounted writable. "+" runs this one step outside the sandbox.
+ExecStartPre=+/usr/bin/mkdir -p %h/.local/share/mailand
+ExecStart=/usr/bin/mailand-daemon
+Restart=on-failure
+RestartSec=5
+# The daemon traps SIGTERM and drains gRPC streams (its own limit is 5s).
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+# --- Hardening ---------------------------------------------------------------
+# No setuid/file-capability escalation.
+NoNewPrivileges=yes
+# Private /tmp: nothing is shared; the socket lives in $XDG_RUNTIME_DIR.
+PrivateTmp=yes
+# Whole file system read-only except ReadWritePaths below.
+ProtectSystem=strict
+# $HOME read-only: the daemon reads ~/.config/mailand/config.toml and nothing
+# else under $HOME except its data dir (re-enabled writable below).
+ProtectHome=read-only
+# DB + message blobs (~/.local/share/mailand) and the runtime dir (%t, the
+# mailand.sock socket; also where the D-Bus session socket is reached).
+ReadWritePaths=%h/.local/share/mailand %t
+# Unix (D-Bus, gRPC socket) + IPv4/IPv6 (IMAP/SMTP/OAuth).
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=yes
+# Go (CGO_ENABLED=0, no JIT) never needs W+X mappings.
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+CapabilityBoundingSet=
+PrivateDevices=yes
+ProtectProc=invisible
+ProcSubset=pid
+# Allow-list of ordinary service syscalls (covers Go runtime, sockets, SQLite).
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged
+UMask=0077
+
+[Install]
+WantedBy=default.target

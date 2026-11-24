@@ -110,6 +110,7 @@ Window {
         if (!ok)
             delay = 3000;
         const bool openFirst = hasArg(argc, argv, "--open-first");
+        const QString composerMode = argValue(argc, argv, "--open-composer");
         auto grab = [&engine, shot] {
             auto *win = engine.rootObjects().isEmpty() ? nullptr
                                                        : qobject_cast<QQuickWindow *>(engine.rootObjects().first());
@@ -127,11 +128,19 @@ Window {
             QTextStream(stdout) << "screenshot " << shot << " " << img.width() << "x" << img.height() << "\n";
             QCoreApplication::quit();
         };
-        QTimer::singleShot(delay, &app, [&engine, openFirst, grab] {
+        QTimer::singleShot(delay, &app, [&engine, openFirst, composerMode, grab] {
             if (openFirst && !engine.rootObjects().isEmpty())
                 QMetaObject::invokeMethod(engine.rootObjects().first(), "openFirstMessage");
             // Give the opened message time to load and render.
-            QTimer::singleShot(openFirst ? 2000 : 0, QCoreApplication::instance(), grab);
+            QTimer::singleShot(openFirst ? 2000 : 0, QCoreApplication::instance(), [&engine, composerMode, grab] {
+                if (composerMode.isEmpty() || engine.rootObjects().isEmpty()) {
+                    grab();
+                    return;
+                }
+                QMetaObject::invokeMethod(engine.rootObjects().first(), "debugOpenComposer",
+                                          Q_ARG(QString, composerMode));
+                QTimer::singleShot(1500, QCoreApplication::instance(), grab);
+            });
         });
     }
     return app.exec();

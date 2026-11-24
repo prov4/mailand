@@ -57,6 +57,11 @@ func Open(path string) (*Store, error) {
 	} {
 		q.Add("_pragma", p)
 	}
+	// Transactions start with BEGIN IMMEDIATE: a deferred read-then-write
+	// transaction that loses the race against another writer fails at once
+	// with SQLITE_BUSY(_SNAPSHOT) instead of honouring busy_timeout (label
+	// refresh and source fetch write concurrently).
+	q.Set("_txlock", "immediate")
 	db, err := sql.Open("sqlite", "file:"+path+"?"+q.Encode())
 	if err != nil {
 		return nil, err

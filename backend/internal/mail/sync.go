@@ -52,6 +52,13 @@ func (w *worker) pass(ctx context.Context, c *conn, kind passKind) error {
 	}
 
 	fetched := 0
+	stopRefresher := func() {}
+	if gmail {
+		stop := w.startLabelRefresher(ctx, folders)
+		defer stop()
+		// stopped before the final refresh so the main connection is free again
+		stopRefresher = stop
+	}
 	for _, f := range folders {
 		if !f.IsSyncSource || (kind == passInbox && !inboxPassWants(f, gmail)) {
 			continue
@@ -65,6 +72,7 @@ func (w *worker) pass(ctx context.Context, c *conn, kind passKind) error {
 			w.log.Warn("folder sync failed", "folder", f.Path, "err", err)
 		}
 	}
+	stopRefresher()
 	if gmail {
 		if err := w.syncLabels(ctx, c, folders, fetched > 0); err != nil {
 			if ctx.Err() != nil || isConnErr(err) {
@@ -177,6 +185,9 @@ func (w *worker) syncSource(ctx context.Context, c *conn, f store.Folder) (int, 
 		}
 		if err != nil {
 			return total, fmt.Errorf("fetch %q: %w", f.Path, err)
+		}
+		if w.m.batchHook != nil {
+			w.m.batchHook(ctx)
 		}
 	}
 
@@ -351,6 +362,9 @@ done:
 		TextBody: parsed.TextBody, HTMLBody: parsed.HTMLBody, RawBlobPath: blob,
 	}
 	_, err := w.m.st.UpsertMessage(ctx, m, nil)
+	if err == nil {
+		w.stored.Add(1)
+	}
 	return err
 }
 

@@ -16,6 +16,7 @@ import (
 	"mailand/backend/internal/mail"
 	"mailand/backend/internal/rpc"
 	"mailand/backend/internal/rpc/pb"
+	"mailand/backend/internal/send"
 	"mailand/backend/internal/store"
 )
 
@@ -70,9 +71,13 @@ func run(log *slog.Logger, socket string, offline bool) error {
 	// A nil *mail.Manager must not be stored in the interface: rpc checks
 	// syncer == nil to report FailedPrecondition when there are no accounts.
 	var syncer rpc.Syncer
+	var sender rpc.Sender
 	var mgr *mail.Manager
 	if offline {
 		syncer = rpc.NewOfflineSyncer(st, broker)
+		sender = send.NewOfflineSender(st, config.BlobDir(), func(accountID, folderID string) {
+			broker.Publish(&pb.DaemonEvent{Type: pb.DaemonEvent_NEW_MESSAGES, AccountId: accountID, FolderId: folderID, Detail: "1"})
+		})
 		log.Warn("offline mode: no IMAP, flag changes are local only")
 	} else if len(cfg.Accounts) > 0 {
 		mgr = mail.NewManager(cfg, st, config.BlobDir(), func(ev mail.Event) {
@@ -82,9 +87,11 @@ func run(log *slog.Logger, socket string, offline bool) error {
 			return err
 		}
 		syncer = mgr
+		sender = send.NewSender(ctx, cfg, st, mgr.TriggerSync, log)
 	}
 
 	srv := rpc.NewServer(st, syncer, broker, log)
+	srv.SetSender(sender)
 	g := srv.Register()
 
 	errc := make(chan error, 1)

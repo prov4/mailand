@@ -14,8 +14,10 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"mailand/backend/internal/auth"
 	mailpkg "mailand/backend/internal/mail"
 	"mailand/backend/internal/rpc/pb"
+	"mailand/backend/internal/send"
 	"mailand/backend/internal/store"
 )
 
@@ -38,12 +40,20 @@ type Syncer interface {
 	SetFlags(ctx context.Context, messageIDs []string, isRead, isFlagged *bool) error
 }
 
+// Sender delivers a composed message (implemented by send.Sender and
+// send.OfflineSender). It returns the Message-ID of the sent mail and reports
+// failures wrapping the send.Err* sentinels.
+type Sender interface {
+	Send(ctx context.Context, req send.Request) (messageIDHeader string, err error)
+}
+
 // Server implements pb.MailandServiceServer on top of the store.
-// SendMessage stays Unimplemented (Milestone 4).
 type Server struct {
 	pb.UnimplementedMailandServiceServer
 	st     *store.Store
 	sync   Syncer // may be nil
+	sendMu sync.RWMutex
+	sender Sender // may be nil; see SetSender
 	broker *Broker
 	log    *slog.Logger
 
@@ -61,6 +71,14 @@ func NewServer(st *store.Store, sync Syncer, broker *Broker, log *slog.Logger) *
 		broker = NewBroker()
 	}
 	return &Server{st: st, sync: sync, broker: broker, log: log, stop: make(chan struct{})}
+}
+
+// SetSender installs the SendMessage backend. Call before serving; with no
+// sender SendMessage returns FailedPrecondition.
+func (s *Server) SetSender(snd Sender) {
+	s.sendMu.Lock()
+	s.sender = snd
+	s.sendMu.Unlock()
 }
 
 // Register creates a grpc.Server with s registered.
@@ -354,4 +372,60 @@ func (s *Server) SubscribeEvents(_ *pb.Empty, stream grpc.ServerStreamingServer[
 			}
 		}
 	}
+}
+
+// SendMessage validates the request and hands it to the Sender.
+func (s *Server) SendMessage(ctx context.Context, req *pb.SendMessageRequest) (*pb.SendMessageResponse, error) {
+	r := send.Request{
+		AccountID: req.AccountId, To: req.To, Cc: req.Cc, Bcc: req.Bcc, Subject: req.Subject,
+		TextBody: req.TextBody, InReplyTo: req.InReplyTo, ReplyToID: req.ReplyToId, ForwardOfID: req.ForwardOfId,
+	}
+	if err := send.Validate(r); err != nil {
+		return nil, s.mapSendErr(err)
+	}
+	if _, err := s.st.GetAccount(ctx, req.AccountId); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, status.Errorf(codes.InvalidArgument, "unknown account %q", req.AccountId)
+		}
+		return nil, s.mapErr("SendMessage", err, "account")
+	}
+	s.sendMu.RLock()
+	snd := s.sender
+	s.sendMu.RUnlock()
+	if snd == nil {
+		return nil, status.Error(codes.FailedPrecondition, "sending is not configured")
+	}
+	id, err := snd.Send(ctx, r)
+	if err != nil {
+		return nil, s.mapSendErr(err)
+	}
+	return &pb.SendMessageResponse{MessageIdHeader: id}, nil
+}
+
+// trimSentinel removes the "<sentinel>: " prefix that send errors carry.
+func trimSentinel(err, sentinel error) string {
+	return strings.TrimPrefix(err.Error(), sentinel.Error()+": ")
+}
+
+func (s *Server) mapSendErr(err error) error {
+	switch {
+	case errors.Is(err, context.Canceled):
+		return status.Error(codes.Canceled, "canceled")
+	case errors.Is(err, context.DeadlineExceeded):
+		return status.Error(codes.DeadlineExceeded, "deadline exceeded")
+	case errors.Is(err, send.ErrInvalid):
+		return status.Error(codes.InvalidArgument, trimSentinel(err, send.ErrInvalid))
+	case errors.Is(err, send.ErrRecipientRejected):
+		return status.Error(codes.InvalidArgument, trimSentinel(err, send.ErrRecipientRejected))
+	case errors.Is(err, send.ErrAuth):
+		if errors.Is(err, auth.ErrReauthRequired) {
+			return status.Error(codes.Unauthenticated, "reauth_required")
+		}
+		return status.Error(codes.Unauthenticated, trimSentinel(err, send.ErrAuth))
+	case errors.Is(err, send.ErrPrecondition):
+		return status.Error(codes.FailedPrecondition, trimSentinel(err, send.ErrPrecondition))
+	case errors.Is(err, send.ErrUnavailable):
+		return status.Error(codes.Unavailable, trimSentinel(err, send.ErrUnavailable))
+	}
+	return s.mapErr("SendMessage", err, "message")
 }

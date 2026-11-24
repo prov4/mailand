@@ -330,8 +330,8 @@ func TestNilSyncer(t *testing.T) {
 	wantCode(t, err, codes.FailedPrecondition, "flags")
 	_, err = e.c.TriggerSync(cx, &pb.AccountRequest{AccountId: "gm"})
 	wantCode(t, err, codes.FailedPrecondition, "sync")
-	_, err = e.c.SendMessage(cx, &pb.SendMessageRequest{})
-	wantCode(t, err, codes.Unimplemented, "send")
+	_, err = e.c.SendMessage(cx, &pb.SendMessageRequest{AccountId: "gm", To: []string{"a@example.com"}})
+	wantCode(t, err, codes.FailedPrecondition, "send")
 }
 
 func TestSubscribeEvents(t *testing.T) {

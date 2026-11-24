@@ -8,6 +8,7 @@ import (
 	"net"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/emersion/go-imap/v2"
@@ -35,6 +36,10 @@ type worker struct {
 
 	tsMu sync.Mutex
 	ts   oauth2.TokenSource
+
+	labelMu sync.Mutex // serialises label refreshes (one at a time per account)
+	labels  map[string]*labelCache
+	stored  atomic.Int64 // messages stored by this worker, ever
 
 	healthy bool // set by session after a successful pass; run goroutine only
 }

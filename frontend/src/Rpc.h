@@ -76,6 +76,9 @@ public:
     void setFlags(const QString &messageId, std::optional<bool> isRead,
                   std::optional<bool> isFlagged, QObject *ctx, Done<mailand::v1::Empty> done);
 
+    void sendMessage(mailand::v1::SendMessageRequest req, QObject *ctx,
+                     Done<mailand::v1::SendMessageResponse> done);
+
     // Surface a user-visible failure (emits errorOccurred).
     void reportError(const QString &message);
 

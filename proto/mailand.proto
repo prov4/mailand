@@ -17,7 +17,7 @@ service MailandService {
   rpc GetAttachment(AttachmentRequest) returns (AttachmentData);
   rpc SearchMessages(SearchRequest) returns (MessageHeaderList);
   rpc SetMessageFlags(SetFlagsRequest) returns (Empty);
-  rpc SendMessage(SendMessageRequest) returns (Empty);
+  rpc SendMessage(SendMessageRequest) returns (SendMessageResponse);
   rpc TriggerSync(AccountRequest) returns (Empty);
 
   // Real-time Push Events (New mail, sync status, flag updates)
@@ -125,6 +125,10 @@ message SetFlagsRequest {
   optional bool is_flagged = 3;
 }
 
+// Address strings in to/cc/bcc are "Name <addr>" or "addr". Errors: InvalidArgument for
+// unknown account / bad or empty recipients / recipient rejected by the SMTP server,
+// Unauthenticated (message "reauth_required" when the user must log in again),
+// Unavailable for network failures, FailedPrecondition if sending is not configured.
 message SendMessageRequest {
   string account_id = 1;
   repeated string to = 2;
@@ -132,7 +136,16 @@ message SendMessageRequest {
   string subject = 4;
   string text_body = 5;
   string html_body = 6;
-  string in_reply_to = 7;
+  string in_reply_to = 7;    // raw Message-ID fallback; reply_to_id takes precedence
+  repeated string bcc = 8;   // envelope only, never written into headers
+  string reply_to_id = 9;    // mailand message id being replied to: the server derives In-Reply-To
+                             // (original Message-ID) and References (original References + Message-ID)
+  string forward_of_id = 10; // mailand message id being forwarded: the server attaches the
+                             // original's non-inline attachments
+}
+
+message SendMessageResponse {
+  string message_id_header = 1; // Message-ID of the sent mail, without angle brackets
 }
 
 message DaemonEvent {

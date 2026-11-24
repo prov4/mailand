@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Mailand
+GenericName=Mail
+Comment=Keyboard-driven mail client for Hyprland
+Exec=mailand-ui
+Icon=mailand
+Terminal=false
+Categories=Network;Email;Office;
+Keywords=mail;email;imap;gmail;
+StartupNotify=false
+StartupWMClass=mailand-ui

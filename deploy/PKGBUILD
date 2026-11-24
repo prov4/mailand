@@ -1,0 +1,65 @@
+# Maintainer: local build
+#
+# Builds the package from the LOCAL working tree (this file lives in deploy/
+# of the repo), including uncommitted changes. There is no source=() download:
+# build() reads the checkout at $startdir/.. directly, so run `makepkg` from
+# this directory (or `make package` from the repo root).
+pkgname=mailand-git
+pkgver=0.1.0.r3.ga922523
+pkgrel=1
+pkgdesc='Keyboard-driven mail client for Hyprland: Go daemon (mailand-daemon) + Qt 6 UI (mailand-ui)'
+arch=('x86_64')
+url='https://localhost/mailand'
+# No LICENSE file exists in the repo yet; do not guess one.
+license=('unknown')
+# gnome-keyring provides org.freedesktop.secrets, which go-keyring uses for
+# OAuth refresh tokens and passwords. Any Secret Service provider works
+# (kwallet, keepassxc); 'org.freedesktop.secrets' is not a pacman "provides"
+# on all of them, so the common default is listed.
+depends=('qt6-base' 'qt6-declarative' 'qt6-wayland' 'qt6-webengine'
+         'grpc' 'protobuf' 'gnome-keyring')
+makedepends=('go' 'cmake' 'protobuf' 'git')
+provides=('mailand')
+conflicts=('mailand')
+options=('!lto')
+
+_root="$startdir/.."
+
+pkgver() {
+  cd "$_root"
+  # 0.1.0.r<commit count>.<short hash>; falls back to the static version.
+  printf '0.1.0.r%s.g%s' "$(git rev-list --count HEAD 2>/dev/null || echo 0)" \
+    "$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+}
+
+build() {
+  cd "$_root"
+
+  # Backend. modernc.org/sqlite and go-keyring (godbus) are pure Go, so
+  # CGO_ENABLED=0 gives a static-ish PIE binary with no libc/sqlite linkage.
+  export CGO_ENABLED=0
+  export GOFLAGS="-trimpath -buildmode=pie -mod=readonly -modcacherw"
+  go -C backend build -ldflags "-s -w" \
+    -o "$srcdir/mailand-daemon" ./cmd/mailand-daemon
+
+  # Frontend. protoc/grpc_cpp_plugin codegen runs inside CMake.
+  cmake -S frontend -B "$srcdir/build-ui" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -Wno-dev
+  cmake --build "$srcdir/build-ui" -j"$(nproc)"
+}
+
+package() {
+  cd "$_root"
+  install -Dm755 "$srcdir/mailand-daemon" "$pkgdir/usr/bin/mailand-daemon"
+  install -Dm755 "$srcdir/build-ui/mailand-ui" "$pkgdir/usr/bin/mailand-ui"
+  install -Dm644 deploy/mailand-daemon.service \
+    "$pkgdir/usr/lib/systemd/user/mailand-daemon.service"
+  install -Dm644 deploy/mailand-ui.desktop \
+    "$pkgdir/usr/share/applications/mailand-ui.desktop"
+  install -Dm644 deploy/mailand.svg \
+    "$pkgdir/usr/share/icons/hicolor/scalable/apps/mailand.svg"
+  # mailand-seed is a dev tool and is intentionally not installed.
+  # install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"  # no LICENSE yet
+}

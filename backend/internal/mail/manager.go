@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
 	"golang.org/x/oauth2"
 
@@ -62,9 +63,13 @@ type Manager struct {
 	stopOnce sync.Once
 
 	// Test hooks; never set in production, never exposed through config.
-	plain       bool // dial without TLS
-	password    func(accountID string) (string, error)
-	tokenSource func(ctx context.Context, a *config.Account) (oauth2.TokenSource, error)
+	plain bool // dial without TLS
+	// labelInterval is the period of Gmail label refreshes during a pass.
+	labelInterval time.Duration
+	onLabelConn   func(*conn)           // called with each extra label-refresh connection
+	batchHook     func(context.Context) // called after each fetched source batch
+	password      func(accountID string) (string, error)
+	tokenSource   func(ctx context.Context, a *config.Account) (oauth2.TokenSource, error)
 }
 
 // NewManager creates a Manager. notify may be nil. Events are queued (bounded,
@@ -78,7 +83,7 @@ func NewManager(cfg *config.Config, st *store.Store, blobDir string, notify func
 		cfg: cfg, st: st, blobDir: blobDir, log: log, notify: notify,
 		events:   make(chan Event, 256),
 		workers:  map[string]*worker{},
-		password: auth.GetPassword,
+		password: auth.GetPassword, labelInterval: defaultLabelInterval,
 	}
 	m.tokenSource = func(ctx context.Context, a *config.Account) (oauth2.TokenSource, error) {
 		return auth.TokenSource(ctx, m.cfg, a)

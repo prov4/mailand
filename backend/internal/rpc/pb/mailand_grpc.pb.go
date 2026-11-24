@@ -47,7 +47,7 @@ type MailandServiceClient interface {
 	GetAttachment(ctx context.Context, in *AttachmentRequest, opts ...grpc.CallOption) (*AttachmentData, error)
 	SearchMessages(ctx context.Context, in *SearchRequest, opts ...grpc.CallOption) (*MessageHeaderList, error)
 	SetMessageFlags(ctx context.Context, in *SetFlagsRequest, opts ...grpc.CallOption) (*Empty, error)
-	SendMessage(ctx context.Context, in *SendMessageRequest, opts ...grpc.CallOption) (*Empty, error)
+	SendMessage(ctx context.Context, in *SendMessageRequest, opts ...grpc.CallOption) (*SendMessageResponse, error)
 	TriggerSync(ctx context.Context, in *AccountRequest, opts ...grpc.CallOption) (*Empty, error)
 	// Real-time Push Events (New mail, sync status, flag updates)
 	SubscribeEvents(ctx context.Context, in *Empty, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DaemonEvent], error)
@@ -131,9 +131,9 @@ func (c *mailandServiceClient) SetMessageFlags(ctx context.Context, in *SetFlags
 	return out, nil
 }
 
-func (c *mailandServiceClient) SendMessage(ctx context.Context, in *SendMessageRequest, opts ...grpc.CallOption) (*Empty, error) {
+func (c *mailandServiceClient) SendMessage(ctx context.Context, in *SendMessageRequest, opts ...grpc.CallOption) (*SendMessageResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Empty)
+	out := new(SendMessageResponse)
 	err := c.cc.Invoke(ctx, MailandService_SendMessage_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -183,7 +183,7 @@ type MailandServiceServer interface {
 	GetAttachment(context.Context, *AttachmentRequest) (*AttachmentData, error)
 	SearchMessages(context.Context, *SearchRequest) (*MessageHeaderList, error)
 	SetMessageFlags(context.Context, *SetFlagsRequest) (*Empty, error)
-	SendMessage(context.Context, *SendMessageRequest) (*Empty, error)
+	SendMessage(context.Context, *SendMessageRequest) (*SendMessageResponse, error)
 	TriggerSync(context.Context, *AccountRequest) (*Empty, error)
 	// Real-time Push Events (New mail, sync status, flag updates)
 	SubscribeEvents(*Empty, grpc.ServerStreamingServer[DaemonEvent]) error
@@ -218,7 +218,7 @@ func (UnimplementedMailandServiceServer) SearchMessages(context.Context, *Search
 func (UnimplementedMailandServiceServer) SetMessageFlags(context.Context, *SetFlagsRequest) (*Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method SetMessageFlags not implemented")
 }
-func (UnimplementedMailandServiceServer) SendMessage(context.Context, *SendMessageRequest) (*Empty, error) {
+func (UnimplementedMailandServiceServer) SendMessage(context.Context, *SendMessageRequest) (*SendMessageResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SendMessage not implemented")
 }
 func (UnimplementedMailandServiceServer) TriggerSync(context.Context, *AccountRequest) (*Empty, error) {

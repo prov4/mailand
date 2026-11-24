@@ -57,6 +57,7 @@ qt_add_qml_module(mailand-ui
         src/FolderModel.h src/FolderModel.cpp
         src/MessageModel.h src/MessageModel.cpp
         src/MessageView.h src/MessageView.cpp
+        src/Composer.h src/Composer.cpp
         src/MailWeb.h src/MailWeb.cpp
         src/Format.h src/Format.cpp
         src/SelfTest.h src/SelfTest.cpp

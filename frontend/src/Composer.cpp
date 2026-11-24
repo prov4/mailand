@@ -1,0 +1,345 @@
+#include "Composer.h"
+
+#include <QRegularExpression>
+#include <QSet>
+#include <QVariantMap>
+
+#include "Format.h"
+#include "Rpc.h"
+
+namespace {
+
+QString s(const std::string &v) { return QString::fromStdString(v); }
+
+QString senderText(const QString &name, const QString &addr)
+{
+    return name.isEmpty() ? addr : QStringLiteral("%1 <%2>").arg(name, addr);
+}
+
+} // namespace
+
+Composer::Composer(QObject *parent) : QObject(parent) {}
+
+// ---- helpers ------------------------------------------------------------------------------------
+
+// Splits on ',' / ';' outside of quotes and angle brackets.
+QStringList Composer::splitAddresses(const QString &list)
+{
+    QStringList out;
+    QString cur;
+    bool quoted = false, angle = false;
+    auto flush = [&] {
+        const QString t = cur.trimmed();
+        if (!t.isEmpty())
+            out << t;
+        cur.clear();
+    };
+    for (const QChar c : list) {
+        if (c == QLatin1Char('"'))
+            quoted = !quoted;
+        else if (!quoted && c == QLatin1Char('<'))
+            angle = true;
+        else if (!quoted && c == QLatin1Char('>'))
+            angle = false;
+        if (!quoted && !angle && (c == QLatin1Char(',') || c == QLatin1Char(';')))
+            flush();
+        else
+            cur += c;
+    }
+    flush();
+    return out;
+}
+
+QString Composer::bareAddress(const QString &addr)
+{
+    static const QRegularExpression re(QStringLiteral("<([^>]*)>"));
+    const auto m = re.match(addr);
+    return (m.hasMatch() ? m.captured(1) : addr).trimmed().toLower();
+}
+
+QString Composer::replySubject(const QString &subj)
+{
+    static const QRegularExpression re(QStringLiteral("^\\s*(re|odg)\\s*:"),
+                                       QRegularExpression::CaseInsensitiveOption);
+    return re.match(subj).hasMatch() ? subj : QStringLiteral("Re: ") + subj;
+}
+
+QString Composer::forwardSubject(const QString &subj)
+{
+    static const QRegularExpression re(QStringLiteral("^\\s*(fwd?|fw)\\s*:"),
+                                       QRegularExpression::CaseInsensitiveOption);
+    return re.match(subj).hasMatch() ? subj : QStringLiteral("Fwd: ") + subj;
+}
+
+QString Composer::quoteText(const QString &text)
+{
+    QString t = text;
+    t.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+    while (t.endsWith(QLatin1Char('\n')))
+        t.chop(1);
+    QStringList lines = t.split(QLatin1Char('\n'));
+    for (QString &l : lines)
+        l = l.isEmpty() ? QStringLiteral(">") : QStringLiteral("> ") + l;
+    return lines.join(QLatin1Char('\n'));
+}
+
+QString Composer::ownEmail() const
+{
+    const auto accounts = Rpc::instance()->accounts();
+    for (const QVariant &v : accounts) {
+        const QVariantMap m = v.toMap();
+        if (m.value(QStringLiteral("id")).toString() == m_accountId)
+            return m.value(QStringLiteral("email")).toString();
+    }
+    return {};
+}
+
+QString Composer::fromText() const
+{
+    const auto accounts = Rpc::instance()->accounts();
+    for (const QVariant &v : accounts) {
+        const QVariantMap m = v.toMap();
+        if (m.value(QStringLiteral("id")).toString() == m_accountId)
+            return senderText(m.value(QStringLiteral("name")).toString(),
+                              m.value(QStringLiteral("email")).toString());
+    }
+    return {};
+}
+
+// ---- property setters ---------------------------------------------------------------------------
+
+void Composer::setAccountId(const QString &v)
+{
+    if (v == m_accountId)
+        return;
+    m_accountId = v;
+    emit accountIdChanged();
+    emit fromTextChanged();
+}
+
+#define MAILAND_SETTER(Name, member, sig)       \
+    void Composer::Name(const QString &v)       \
+    {                                           \
+        if (v == member)                        \
+            return;                             \
+        member = v;                             \
+        emit sig();                             \
+        updateDirty();                          \
+    }
+MAILAND_SETTER(setTo, m_to, toChanged)
+MAILAND_SETTER(setCc, m_cc, ccChanged)
+MAILAND_SETTER(setBcc, m_bcc, bccChanged)
+MAILAND_SETTER(setSubject, m_subject, subjectChanged)
+MAILAND_SETTER(setBody, m_body, bodyChanged)
+#undef MAILAND_SETTER
+
+void Composer::snapshot()
+{
+    m_i_to = m_to; m_i_cc = m_cc; m_i_bcc = m_bcc; m_i_subject = m_subject; m_i_body = m_body;
+    updateDirty();
+}
+
+void Composer::updateDirty()
+{
+    const bool d = !m_loading
+                   && (m_to != m_i_to || m_cc != m_i_cc || m_bcc != m_i_bcc || m_subject != m_i_subject
+                       || m_body != m_i_body);
+    if (d != m_dirty) {
+        m_dirty = d;
+        emit dirtyChanged();
+    }
+}
+
+void Composer::setError(const QString &e)
+{
+    if (e == m_error)
+        return;
+    m_error = e;
+    emit errorTextChanged();
+}
+
+void Composer::setLoading(bool l)
+{
+    if (l == m_loading)
+        return;
+    m_loading = l;
+    emit loadingChanged();
+    updateDirty();
+}
+
+// ---- init ---------------------------------------------------------------------------------------
+
+void Composer::reset(const QString &mode, const QString &accountId)
+{
+    ++m_gen; // invalidates any in-flight init
+    if (m_sending) {
+        m_sending = false;
+        emit sendingChanged();
+    }
+    setLoading(false);
+    setError(QString());
+    m_replyToId.clear();
+    m_forwardOfId.clear();
+    if (!m_attachments.isEmpty()) {
+        m_attachments.clear();
+        emit forwardAttachmentsChanged();
+    }
+    setAccountId(accountId);
+    if (m_mode != mode) {
+        m_mode = mode;
+        emit modeChanged();
+    }
+    setTo({}); setCc({}); setBcc({}); setSubject({}); setBody({});
+    snapshot();
+}
+
+void Composer::initNew(const QString &accountId)
+{
+    reset(QStringLiteral("new"), accountId);
+    emit ready();
+}
+
+void Composer::initReply(const QString &messageId, bool replyAll)
+{
+    reset(replyAll ? QStringLiteral("replyAll") : QStringLiteral("reply"), m_accountId);
+    m_replyToId = messageId;
+    loadOriginal(messageId, false, replyAll);
+}
+
+void Composer::initForward(const QString &messageId)
+{
+    reset(QStringLiteral("forward"), m_accountId);
+    m_forwardOfId = messageId;
+    loadOriginal(messageId, true, false);
+}
+
+void Composer::loadOriginal(const QString &messageId, bool forward, bool replyAll)
+{
+    const int gen = m_gen;
+    setLoading(true);
+    Rpc::instance()->getMessage(
+        messageId, this, [this, gen, forward, replyAll](const grpc::Status &st, const mailand::v1::MessageDetail &d) {
+            if (gen != m_gen)
+                return;
+            setLoading(false);
+            if (!st.ok()) {
+                const QString msg = QStringLiteral("Could not load the original message: ") + Rpc::statusText(st);
+                setError(msg);
+                emit failed(msg);
+                return;
+            }
+            const auto &h = d.header();
+            const QString subj = s(h.subject());
+            const QString fromName = s(h.from_name()), fromAddr = s(h.from_address());
+            const QString sender = senderText(fromName, fromAddr);
+            const QString date = Format::longDate(h.timestamp_unix());
+            const QString orig = s(d.text_body());
+
+            if (forward) {
+                QStringList to;
+                for (const auto &a : d.to_addresses())
+                    to << s(a);
+                setSubject(forwardSubject(subj));
+                setBody(QStringLiteral("\n\n---------- Forwarded message ----------\nFrom: %1\nDate: %2\nSubject: %3\nTo: %4\n\n")
+                            .arg(sender, date, subj, to.join(QStringLiteral(", ")))
+                        + orig);
+                for (const auto &a : d.attachments()) {
+                    if (a.inline_())
+                        continue;
+                    m_attachments.append(QVariantMap{{QStringLiteral("filename"), s(a.filename())},
+                                                     {QStringLiteral("sizeText"), Format::sizeText(a.size_bytes())}});
+                }
+                emit forwardAttachmentsChanged();
+            } else {
+                setSubject(replySubject(subj));
+                setTo(sender);
+                if (replyAll) {
+                    const QString own = ownEmail().trimmed().toLower();
+                    QSet<QString> seen;
+                    if (!own.isEmpty())
+                        seen.insert(own);
+                    seen.insert(bareAddress(fromAddr));
+                    QStringList toExtra, ccList;
+                    for (const auto &a : d.to_addresses()) {
+                        const QString b = bareAddress(s(a));
+                        if (!b.isEmpty() && !seen.contains(b)) {
+                            seen.insert(b);
+                            toExtra << s(a);
+                        }
+                    }
+                    for (const auto &a : d.cc_addresses()) {
+                        const QString b = bareAddress(s(a));
+                        if (!b.isEmpty() && !seen.contains(b)) {
+                            seen.insert(b);
+                            ccList << s(a);
+                        }
+                    }
+                    // Replying to one's own message: do not address oneself.
+                    if (!own.isEmpty() && bareAddress(fromAddr) == own) {
+                        setTo(toExtra.join(QStringLiteral(", ")));
+                    } else if (!toExtra.isEmpty()) {
+                        setTo(sender + QStringLiteral(", ") + toExtra.join(QStringLiteral(", ")));
+                    }
+                    setCc(ccList.join(QStringLiteral(", ")));
+                }
+                setBody(QStringLiteral("\n\nOn %1, %2 wrote:\n").arg(date, sender) + quoteText(orig) + QLatin1Char('\n'));
+            }
+            snapshot();
+            emit ready();
+        });
+}
+
+// ---- send ---------------------------------------------------------------------------------------
+
+void Composer::send()
+{
+    if (m_sending || m_loading)
+        return;
+    const QStringList to = splitAddresses(m_to), cc = splitAddresses(m_cc), bcc = splitAddresses(m_bcc);
+    if (to.isEmpty() && cc.isEmpty() && bcc.isEmpty()) {
+        const QString msg = QStringLiteral("Add at least one recipient.");
+        setError(msg);
+        emit failed(msg);
+        return;
+    }
+    if (m_accountId.isEmpty()) {
+        const QString msg = QStringLiteral("No account selected.");
+        setError(msg);
+        emit failed(msg);
+        return;
+    }
+
+    mailand::v1::SendMessageRequest req;
+    req.set_account_id(m_accountId.toStdString());
+    for (const QString &a : to) req.add_to(a.toStdString());
+    for (const QString &a : cc) req.add_cc(a.toStdString());
+    for (const QString &a : bcc) req.add_bcc(a.toStdString());
+    req.set_subject(m_subject.toStdString());
+    req.set_text_body(m_body.toStdString());
+    req.set_reply_to_id(m_replyToId.toStdString());
+    req.set_forward_of_id(m_forwardOfId.toStdString());
+
+    setError(QString());
+    m_sending = true;
+    emit sendingChanged();
+    const int gen = m_gen;
+    Rpc::instance()->sendMessage(std::move(req), this, [this, gen](const grpc::Status &st, const mailand::v1::SendMessageResponse &) {
+        if (gen != m_gen)
+            return;
+        m_sending = false;
+        emit sendingChanged();
+        if (!st.ok()) {
+            QString msg = s(st.error_message());
+            if (st.error_code() == grpc::StatusCode::UNAUTHENTICATED)
+                msg = QStringLiteral("Account needs re-authentication. Run: mailand-daemon login ") + m_accountId;
+            else if (st.error_code() == grpc::StatusCode::UNAVAILABLE)
+                msg = QStringLiteral("Could not reach the mail server: ") + msg;
+            else if (msg.isEmpty())
+                msg = Rpc::statusText(st);
+            setError(msg);
+            emit failed(msg);
+            return;
+        }
+        emit sent();
+    });
+}

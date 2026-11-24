@@ -245,6 +245,15 @@ void Rpc::setFlags(const QString &messageId, std::optional<bool> isRead,
         ctx, std::move(done));
 }
 
+void Rpc::sendMessage(mailand::v1::SendMessageRequest req, QObject *ctx,
+                      Done<mailand::v1::SendMessageResponse> done)
+{
+    call<mailand::v1::SendMessageResponse>(
+        std::move(req),
+        [](auto *a, auto *cx, const auto *rq, auto *rs, auto cb) { a->SendMessage(cx, rq, rs, std::move(cb)); },
+        ctx, std::move(done), 90000);
+}
+
 void Rpc::setConnected(bool connected, const QString &error)
 {
     if (m_connected != connected) {

@@ -28,6 +28,16 @@ ApplicationWindow {
             pendingOpenFirst = true
     }
 
+    // Debug (--open-composer): mode is new | reply | replyAll | forward.
+    function debugOpenComposer(mode: string) {
+        if (mode === "new")
+            composer.openNew(accountId)
+        else if (mode === "forward")
+            composer.openForward(accountId, messageView.messageId)
+        else
+            composer.openReply(accountId, messageView.messageId, mode === "replyAll")
+    }
+
     function selectAccount(id: string) {
         if (id === accountId)
             return
@@ -54,10 +64,6 @@ ApplicationWindow {
         MailWeb.remoteAllowed = false
         messageView.messageId = id
         readTimer.restart()
-    }
-    function openComposer(mode: string) {
-        composer.mode = mode
-        composer.open()
     }
 
     FolderModel {
@@ -87,7 +93,7 @@ ApplicationWindow {
     Connections {
         target: Rpc
         function onAccountsChanged() { root.ensureAccount() }
-        function onErrorOccurred(message: string) { toast.show(message) }
+        function onErrorOccurred(message: string) { toast.show(message, true) }
     }
     function ensureAccount() {
         const a = Rpc.accounts
@@ -130,11 +136,21 @@ ApplicationWindow {
         onActivated: listPane.focusList()
     }
     Shortcut { sequence: "/"; enabled: root.keysEnabled; onActivated: listPane.focusSearch() }
-    Shortcut { sequence: "c"; enabled: root.keysEnabled; onActivated: root.openComposer("compose") }
+    Shortcut { sequence: "c"; enabled: root.keysEnabled; onActivated: composer.openNew(root.accountId) }
     Shortcut {
         sequence: "r"
-        enabled: root.keysEnabled && messageView.messageId.length > 0
-        onActivated: root.openComposer("reply")
+        enabled: root.keysEnabled && messageView.valid
+        onActivated: composer.openReply(root.accountId, messageView.messageId, false)
+    }
+    Shortcut {
+        sequence: "Shift+R"
+        enabled: root.keysEnabled && messageView.valid
+        onActivated: composer.openReply(root.accountId, messageView.messageId, true)
+    }
+    Shortcut {
+        sequence: "f"
+        enabled: root.keysEnabled && messageView.valid
+        onActivated: composer.openForward(root.accountId, messageView.messageId)
     }
     Shortcut {
         sequence: "m"
@@ -278,8 +294,10 @@ ApplicationWindow {
     Rectangle {
         id: toast
         property string message
-        function show(msg: string) {
+        property bool isError: true
+        function show(msg: string, error: bool) {
             message = msg
+            isError = error
             opacity = 1
             hideTimer.restart()
         }
@@ -288,7 +306,7 @@ ApplicationWindow {
         height: toastText.implicitHeight + 2 * Theme.s3
         radius: Theme.radius
         color: Theme.surfaceAlt
-        border.color: Theme.danger
+        border.color: toast.isError ? Theme.danger : Theme.success
         opacity: 0
         visible: opacity > 0
         Behavior on opacity { NumberAnimation { duration: 150 } }
@@ -304,6 +322,9 @@ ApplicationWindow {
         Timer { id: hideTimer; interval: 5000; onTriggered: toast.opacity = 0 }
     }
 
-    ComposerModal { id: composer }
+    ComposerModal {
+        id: composer
+        onSent: toast.show("Message sent", false)
+    }
     HelpOverlay { id: help }
 }

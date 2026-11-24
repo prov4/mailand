@@ -1,6 +1,7 @@
 #include "SelfTest.h"
 
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QRegularExpression>
@@ -10,6 +11,7 @@
 
 #include <functional>
 
+#include "Composer.h"
 #include "FolderModel.h"
 #include "MessageModel.h"
 #include "MessageView.h"
@@ -135,6 +137,97 @@ int runSelfTest(int argc, char **argv)
             << "> " << view.dateText() << " hasHtml=" << view.hasHtml() << " url=" << view.htmlUrl().toString()
             << " attachments=" << view.attachments().toList().size() << " textBody=" << view.textBody().size()
             << " chars" << Qt::endl;
+    }
+
+
+    // composer: reply / reply-all / forward prefill, then send in offline mode
+    {
+        const QString ownEmail = acc.value("email").toString();
+        const QString origSubject = view.subject();
+        auto isReady = [](Composer &cm) { return !cm.loading(); };
+
+        Composer rep;
+        rep.setAccountId(accountId);
+        rep.initReply(firstId, false);
+        waitUntil([&] { return isReady(rep); });
+        check(rep.errorText().isEmpty(), "initReply: no error");
+        check(rep.subject() == Composer::replySubject(origSubject) && rep.subject().startsWith("Re:", Qt::CaseInsensitive),
+              "initReply: subject \"" + rep.subject() + "\"");
+        check(Composer::bareAddress(rep.to()) == view.fromAddress().toLower(), "initReply: to = original sender (" + rep.to() + ")");
+        check(rep.body().startsWith("\n\nOn ") && rep.body().contains(" wrote:\n"), "initReply: attribution line");
+        const QString firstLine = view.textBody().split('\n').value(0);
+        check(view.textBody().isEmpty() || rep.body().contains("\n> " + firstLine) || rep.body().contains("\n>\n"),
+              "initReply: quoted with \"> \" prefix");
+        check(!rep.dirty(), "initReply: not dirty after init");
+        rep.setBody("x" + rep.body());
+        check(rep.dirty(), "dirty after edit");
+
+        Composer all;
+        all.setAccountId(accountId);
+        all.initReply(firstId, true);
+        waitUntil([&] { return isReady(all); });
+        bool selfFound = false;
+        for (const QString &f : {all.to(), all.cc()})
+            for (const QString &a : Composer::splitAddresses(f))
+                if (Composer::bareAddress(a) == ownEmail.toLower())
+                    selfFound = true;
+        check(!selfFound, "initReply(replyAll): own address excluded (to=" + all.to() + " cc=" + all.cc() + ")");
+
+        Composer fwd;
+        fwd.setAccountId(accountId);
+        fwd.initForward(firstId);
+        waitUntil([&] { return isReady(fwd); });
+        check(fwd.subject() == Composer::forwardSubject(origSubject) && fwd.subject().startsWith("Fwd:"),
+              "initForward: subject \"" + fwd.subject() + "\"");
+        check(fwd.body().contains("---------- Forwarded message ----------\nFrom: "), "initForward: header block");
+        check(fwd.mode() == "forward" && fwd.to().isEmpty(), "initForward: mode, empty To");
+
+        check(Composer::replySubject("RE: x") == "RE: x" && Composer::replySubject("odg: x") == "odg: x"
+                  && Composer::replySubject("x") == "Re: x",
+              "replySubject prefix rules");
+        check(Composer::splitAddresses("a@x.org; \"B, C\" <b@x.org>,  ,c@x.org").size() == 3, "splitAddresses");
+
+        // send a new message in offline mode and find it in the Sent folder
+        int sentRow = -1;
+        for (int i = 0; i < folders.count(); ++i)
+            if (folders.data(folders.index(i), FolderModel::DisplayNameRole).toString() == "Sent")
+                sentRow = i;
+        if (check(sentRow >= 0, "Sent folder present")) {
+            MessageModel sentModel;
+            sentModel.setAccountId(accountId);
+            sentModel.setFolderId(folders.folderIdAt(sentRow));
+            waitUntil([&] { return !sentModel.loading(); });
+            const int sentBefore = sentModel.totalCount();
+
+            const QString subj = QStringLiteral("selftest %1").arg(QDateTime::currentMSecsSinceEpoch());
+            Composer nw;
+            nw.initNew(accountId);
+            check(nw.fromText().contains(ownEmail), "initNew: fromText " + nw.fromText());
+            int sentCount = 0;
+            QString failMsg;
+            QObject::connect(&nw, &Composer::sent, &app, [&] { ++sentCount; });
+            QObject::connect(&nw, &Composer::failed, &app, [&](const QString &m) { failMsg = m; });
+            nw.send();
+            check(!failMsg.isEmpty() && sentCount == 0, "send() without recipients fails locally: " + failMsg);
+            nw.setTo("selftest@example.org");
+            nw.setSubject(subj);
+            nw.setBody("Hello from the selftest.\n");
+            nw.send();
+            check(nw.sending(), "send(): sending flag set");
+            waitUntil([&] { return !nw.sending(); });
+            check(sentCount == 1, "send(): sent() emitted" + (nw.errorText().isEmpty() ? QString() : " (error: " + nw.errorText() + ")"));
+            bool found = false;
+            for (int attempt = 0; attempt < 30 && !found; ++attempt) {
+                sentModel.refresh();
+                waitUntil([&] { return !sentModel.loading(); });
+                for (int i = 0; i < sentModel.count(); ++i)
+                    if (sentModel.get(i).toMap().value("subject").toString() == subj)
+                        found = true;
+                if (!found)
+                    settle(100);
+            }
+            check(found, QStringLiteral("sent message appears in Sent folder (%1 -> %2 messages)").arg(sentBefore).arg(sentModel.totalCount()));
+        }
     }
 
     // search: longest word of the subject, falling back to "the"

@@ -76,7 +76,7 @@ func (x DaemonEvent_Type) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use DaemonEvent_Type.Descriptor instead.
 func (DaemonEvent_Type) EnumDescriptor() ([]byte, []int) {
-	return file_mailand_proto_rawDescGZIP(), []int{17, 0}
+	return file_mailand_proto_rawDescGZIP(), []int{18, 0}
 }
 
 type Empty struct {
@@ -1080,15 +1080,23 @@ func (x *SetFlagsRequest) GetIsFlagged() bool {
 	return false
 }
 
+// Address strings in to/cc/bcc are "Name <addr>" or "addr". Errors: InvalidArgument for
+// unknown account / bad or empty recipients / recipient rejected by the SMTP server,
+// Unauthenticated (message "reauth_required" when the user must log in again),
+// Unavailable for network failures, FailedPrecondition if sending is not configured.
 type SendMessageRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	AccountId     string                 `protobuf:"bytes,1,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
-	To            []string               `protobuf:"bytes,2,rep,name=to,proto3" json:"to,omitempty"`
-	Cc            []string               `protobuf:"bytes,3,rep,name=cc,proto3" json:"cc,omitempty"`
-	Subject       string                 `protobuf:"bytes,4,opt,name=subject,proto3" json:"subject,omitempty"`
-	TextBody      string                 `protobuf:"bytes,5,opt,name=text_body,json=textBody,proto3" json:"text_body,omitempty"`
-	HtmlBody      string                 `protobuf:"bytes,6,opt,name=html_body,json=htmlBody,proto3" json:"html_body,omitempty"`
-	InReplyTo     string                 `protobuf:"bytes,7,opt,name=in_reply_to,json=inReplyTo,proto3" json:"in_reply_to,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	AccountId string                 `protobuf:"bytes,1,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	To        []string               `protobuf:"bytes,2,rep,name=to,proto3" json:"to,omitempty"`
+	Cc        []string               `protobuf:"bytes,3,rep,name=cc,proto3" json:"cc,omitempty"`
+	Subject   string                 `protobuf:"bytes,4,opt,name=subject,proto3" json:"subject,omitempty"`
+	TextBody  string                 `protobuf:"bytes,5,opt,name=text_body,json=textBody,proto3" json:"text_body,omitempty"`
+	HtmlBody  string                 `protobuf:"bytes,6,opt,name=html_body,json=htmlBody,proto3" json:"html_body,omitempty"`
+	InReplyTo string                 `protobuf:"bytes,7,opt,name=in_reply_to,json=inReplyTo,proto3" json:"in_reply_to,omitempty"` // raw Message-ID fallback; reply_to_id takes precedence
+	Bcc       []string               `protobuf:"bytes,8,rep,name=bcc,proto3" json:"bcc,omitempty"`                                // envelope only, never written into headers
+	ReplyToId string                 `protobuf:"bytes,9,opt,name=reply_to_id,json=replyToId,proto3" json:"reply_to_id,omitempty"` // mailand message id being replied to: the server derives In-Reply-To
+	// (original Message-ID) and References (original References + Message-ID)
+	ForwardOfId   string `protobuf:"bytes,10,opt,name=forward_of_id,json=forwardOfId,proto3" json:"forward_of_id,omitempty"` // mailand message id being forwarded: the server attaches the
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1172,6 +1180,71 @@ func (x *SendMessageRequest) GetInReplyTo() string {
 	return ""
 }
 
+func (x *SendMessageRequest) GetBcc() []string {
+	if x != nil {
+		return x.Bcc
+	}
+	return nil
+}
+
+func (x *SendMessageRequest) GetReplyToId() string {
+	if x != nil {
+		return x.ReplyToId
+	}
+	return ""
+}
+
+func (x *SendMessageRequest) GetForwardOfId() string {
+	if x != nil {
+		return x.ForwardOfId
+	}
+	return ""
+}
+
+type SendMessageResponse struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	MessageIdHeader string                 `protobuf:"bytes,1,opt,name=message_id_header,json=messageIdHeader,proto3" json:"message_id_header,omitempty"` // Message-ID of the sent mail, without angle brackets
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *SendMessageResponse) Reset() {
+	*x = SendMessageResponse{}
+	mi := &file_mailand_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SendMessageResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SendMessageResponse) ProtoMessage() {}
+
+func (x *SendMessageResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_mailand_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SendMessageResponse.ProtoReflect.Descriptor instead.
+func (*SendMessageResponse) Descriptor() ([]byte, []int) {
+	return file_mailand_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *SendMessageResponse) GetMessageIdHeader() string {
+	if x != nil {
+		return x.MessageIdHeader
+	}
+	return ""
+}
+
 type DaemonEvent struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Type          DaemonEvent_Type       `protobuf:"varint,1,opt,name=type,proto3,enum=mailand.v1.DaemonEvent_Type" json:"type,omitempty"`
@@ -1184,7 +1257,7 @@ type DaemonEvent struct {
 
 func (x *DaemonEvent) Reset() {
 	*x = DaemonEvent{}
-	mi := &file_mailand_proto_msgTypes[17]
+	mi := &file_mailand_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1196,7 +1269,7 @@ func (x *DaemonEvent) String() string {
 func (*DaemonEvent) ProtoMessage() {}
 
 func (x *DaemonEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_mailand_proto_msgTypes[17]
+	mi := &file_mailand_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1209,7 +1282,7 @@ func (x *DaemonEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DaemonEvent.ProtoReflect.Descriptor instead.
 func (*DaemonEvent) Descriptor() ([]byte, []int) {
-	return file_mailand_proto_rawDescGZIP(), []int{17}
+	return file_mailand_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *DaemonEvent) GetType() DaemonEvent_Type {
@@ -1332,7 +1405,7 @@ const file_mailand_proto_rawDesc = "" +
 	"is_flagged\x18\x03 \x01(\bH\x01R\tisFlagged\x88\x01\x01B\n" +
 	"\n" +
 	"\b_is_readB\r\n" +
-	"\v_is_flagged\"\xc7\x01\n" +
+	"\v_is_flagged\"\x9d\x02\n" +
 	"\x12SendMessageRequest\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x01 \x01(\tR\taccountId\x12\x0e\n" +
@@ -1341,7 +1414,13 @@ const file_mailand_proto_rawDesc = "" +
 	"\asubject\x18\x04 \x01(\tR\asubject\x12\x1b\n" +
 	"\ttext_body\x18\x05 \x01(\tR\btextBody\x12\x1b\n" +
 	"\thtml_body\x18\x06 \x01(\tR\bhtmlBody\x12\x1e\n" +
-	"\vin_reply_to\x18\a \x01(\tR\tinReplyTo\"\xf0\x01\n" +
+	"\vin_reply_to\x18\a \x01(\tR\tinReplyTo\x12\x10\n" +
+	"\x03bcc\x18\b \x03(\tR\x03bcc\x12\x1e\n" +
+	"\vreply_to_id\x18\t \x01(\tR\treplyToId\x12\"\n" +
+	"\rforward_of_id\x18\n" +
+	" \x01(\tR\vforwardOfId\"A\n" +
+	"\x13SendMessageResponse\x12*\n" +
+	"\x11message_id_header\x18\x01 \x01(\tR\x0fmessageIdHeader\"\xf0\x01\n" +
 	"\vDaemonEvent\x120\n" +
 	"\x04type\x18\x01 \x01(\x0e2\x1c.mailand.v1.DaemonEvent.TypeR\x04type\x12\x1d\n" +
 	"\n" +
@@ -1353,7 +1432,7 @@ const file_mailand_proto_rawDesc = "" +
 	"\rSYNC_FINISHED\x10\x01\x12\x10\n" +
 	"\fNEW_MESSAGES\x10\x02\x12\x11\n" +
 	"\rFLAGS_UPDATED\x10\x03\x12\t\n" +
-	"\x05ERROR\x10\x042\xc0\x05\n" +
+	"\x05ERROR\x10\x042\xce\x05\n" +
 	"\x0eMailandService\x12:\n" +
 	"\fListAccounts\x12\x11.mailand.v1.Empty\x1a\x17.mailand.v1.AccountList\x12A\n" +
 	"\vListFolders\x12\x1a.mailand.v1.AccountRequest\x1a\x16.mailand.v1.FolderList\x12N\n" +
@@ -1362,8 +1441,8 @@ const file_mailand_proto_rawDesc = "" +
 	"GetMessage\x12\x1a.mailand.v1.MessageRequest\x1a\x19.mailand.v1.MessageDetail\x12J\n" +
 	"\rGetAttachment\x12\x1d.mailand.v1.AttachmentRequest\x1a\x1a.mailand.v1.AttachmentData\x12J\n" +
 	"\x0eSearchMessages\x12\x19.mailand.v1.SearchRequest\x1a\x1d.mailand.v1.MessageHeaderList\x12A\n" +
-	"\x0fSetMessageFlags\x12\x1b.mailand.v1.SetFlagsRequest\x1a\x11.mailand.v1.Empty\x12@\n" +
-	"\vSendMessage\x12\x1e.mailand.v1.SendMessageRequest\x1a\x11.mailand.v1.Empty\x12<\n" +
+	"\x0fSetMessageFlags\x12\x1b.mailand.v1.SetFlagsRequest\x1a\x11.mailand.v1.Empty\x12N\n" +
+	"\vSendMessage\x12\x1e.mailand.v1.SendMessageRequest\x1a\x1f.mailand.v1.SendMessageResponse\x12<\n" +
 	"\vTriggerSync\x12\x1a.mailand.v1.AccountRequest\x1a\x11.mailand.v1.Empty\x12?\n" +
 	"\x0fSubscribeEvents\x12\x11.mailand.v1.Empty\x1a\x17.mailand.v1.DaemonEvent0\x01B$Z\"mailand/backend/internal/rpc/pb;pbb\x06proto3"
 
@@ -1380,7 +1459,7 @@ func file_mailand_proto_rawDescGZIP() []byte {
 }
 
 var file_mailand_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_mailand_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
+var file_mailand_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_mailand_proto_goTypes = []any{
 	(DaemonEvent_Type)(0),       // 0: mailand.v1.DaemonEvent.Type
 	(*Empty)(nil),               // 1: mailand.v1.Empty
@@ -1400,7 +1479,8 @@ var file_mailand_proto_goTypes = []any{
 	(*SearchRequest)(nil),       // 15: mailand.v1.SearchRequest
 	(*SetFlagsRequest)(nil),     // 16: mailand.v1.SetFlagsRequest
 	(*SendMessageRequest)(nil),  // 17: mailand.v1.SendMessageRequest
-	(*DaemonEvent)(nil),         // 18: mailand.v1.DaemonEvent
+	(*SendMessageResponse)(nil), // 18: mailand.v1.SendMessageResponse
+	(*DaemonEvent)(nil),         // 19: mailand.v1.DaemonEvent
 }
 var file_mailand_proto_depIdxs = []int32{
 	3,  // 0: mailand.v1.AccountList.accounts:type_name -> mailand.v1.Account
@@ -1427,9 +1507,9 @@ var file_mailand_proto_depIdxs = []int32{
 	13, // 21: mailand.v1.MailandService.GetAttachment:output_type -> mailand.v1.AttachmentData
 	9,  // 22: mailand.v1.MailandService.SearchMessages:output_type -> mailand.v1.MessageHeaderList
 	1,  // 23: mailand.v1.MailandService.SetMessageFlags:output_type -> mailand.v1.Empty
-	1,  // 24: mailand.v1.MailandService.SendMessage:output_type -> mailand.v1.Empty
+	18, // 24: mailand.v1.MailandService.SendMessage:output_type -> mailand.v1.SendMessageResponse
 	1,  // 25: mailand.v1.MailandService.TriggerSync:output_type -> mailand.v1.Empty
-	18, // 26: mailand.v1.MailandService.SubscribeEvents:output_type -> mailand.v1.DaemonEvent
+	19, // 26: mailand.v1.MailandService.SubscribeEvents:output_type -> mailand.v1.DaemonEvent
 	17, // [17:27] is the sub-list for method output_type
 	7,  // [7:17] is the sub-list for method input_type
 	7,  // [7:7] is the sub-list for extension type_name
@@ -1449,7 +1529,7 @@ func file_mailand_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_mailand_proto_rawDesc), len(file_mailand_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   18,
+			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
