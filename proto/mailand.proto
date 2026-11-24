@@ -1,0 +1,134 @@
+syntax = "proto3";
+
+// Single source of truth for the mailand-daemon <-> mailand-ui IPC contract.
+// Transport: gRPC over a Unix domain socket at $XDG_RUNTIME_DIR/mailand.sock.
+
+package mailand.v1;
+option go_package = "mailand/backend/internal/rpc/pb;pb";
+
+service MailandService {
+  // Accounts & Folders
+  rpc ListAccounts(Empty) returns (AccountList);
+  rpc ListFolders(AccountRequest) returns (FolderList);
+
+  // Mail Operations
+  rpc ListMessages(ListMessagesRequest) returns (MessageHeaderList);
+  rpc GetMessage(MessageRequest) returns (MessageDetail);
+  rpc SearchMessages(SearchRequest) returns (MessageHeaderList);
+  rpc SetMessageFlags(SetFlagsRequest) returns (Empty);
+  rpc SendMessage(SendMessageRequest) returns (Empty);
+  rpc TriggerSync(AccountRequest) returns (Empty);
+
+  // Real-time Push Events (New mail, sync status, flag updates)
+  rpc SubscribeEvents(Empty) returns (stream DaemonEvent);
+}
+
+message Empty {}
+
+message AccountRequest {
+  string account_id = 1;
+}
+
+message Account {
+  string id = 1;
+  string name = 2;
+  string email = 3;
+}
+
+message AccountList {
+  repeated Account accounts = 1;
+}
+
+message Folder {
+  string id = 1;
+  string account_id = 2;
+  string name = 3;
+  string path = 4;
+  uint32 unread_count = 5;
+}
+
+message FolderList {
+  repeated Folder folders = 1;
+}
+
+message ListMessagesRequest {
+  string folder_id = 1;
+  uint32 limit = 2;
+  uint32 offset = 3;
+}
+
+message MessageHeader {
+  string id = 1;
+  string folder_id = 2;
+  uint32 uid = 3;
+  string subject = 4;
+  string from_name = 5;
+  string from_address = 6;
+  int64 timestamp_unix = 7;
+  bool is_read = 8;
+  bool is_flagged = 9;
+  bool has_attachments = 10;
+  string snippet = 11;
+  repeated string folder_ids = 12; // all folders/labels this message appears in
+}
+
+message MessageHeaderList {
+  repeated MessageHeader messages = 1;
+  uint32 total_count = 2;
+}
+
+message MessageRequest {
+  string message_id = 1;
+}
+
+message AttachmentInfo {
+  string id = 1;
+  string filename = 2;
+  string mime_type = 3;
+  uint64 size_bytes = 4;
+}
+
+message MessageDetail {
+  MessageHeader header = 1;
+  repeated string to_addresses = 2;
+  repeated string cc_addresses = 3;
+  string text_body = 4;
+  string html_body = 5;
+  repeated AttachmentInfo attachments = 6;
+}
+
+message SearchRequest {
+  string query = 1;
+  string account_id = 2; // Optional filter
+  uint32 limit = 3;
+}
+
+message SetFlagsRequest {
+  repeated string message_ids = 1;
+  optional bool is_read = 2;
+  optional bool is_flagged = 3;
+}
+
+message SendMessageRequest {
+  string account_id = 1;
+  repeated string to = 2;
+  repeated string cc = 3;
+  string subject = 4;
+  string text_body = 5;
+  string html_body = 6;
+  string in_reply_to = 7;
+}
+
+message DaemonEvent {
+  enum Type {
+    SYNC_STARTED = 0;
+    SYNC_FINISHED = 1;
+    NEW_MESSAGES = 2;
+    FLAGS_UPDATED = 3;
+    ERROR = 4;
+  }
+  Type type = 1;
+  string account_id = 2;
+  string folder_id = 3;
+  string detail = 4;
+}

@@ -1,0 +1,24 @@
+From: Računovodstvo <racuni@firma.example>
+To: josip@example.org
+Subject: Račun 2026-03
+Date: Fri, 06 Mar 2026 12:00:00 +0100
+Message-ID: <inv1@firma.example>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="MIX"
+
+--MIX
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 8bit
+
+U privitku je račun.
+--MIX
+Content-Type: application/pdf; name*=UTF-8''ra%C4%8Dun_%C4%8D%C5%A1%C5%BE.pdf
+Content-Disposition: attachment; filename*=UTF-8''ra%C4%8Dun_%C4%8D%C5%A1%C5%BE.pdf
+Content-Transfer-Encoding: base64
+
+JVBERi0xLjQgZmFrZSBwZGYgY29udGVudCAlUERGLTEuNCBmYWtlIHBkZiBjb250ZW50ICVQREYt
+MS40IGZha2UgcGRmIGNvbnRlbnQgJVBERi0xLjQgZmFrZSBwZGYgY29udGVudCAlUERGLTEuNCBm
+YWtlIHBkZiBjb250ZW50ICVQREYtMS40IGZha2UgcGRmIGNvbnRlbnQgJVBERi0xLjQgZmFrZSBw
+ZGYgY29udGVudCAlUERGLTEuNCBmYWtlIHBkZiBjb250ZW50ICVQREYtMS40IGZha2UgcGRmIGNv
+bnRlbnQgJVBERi0xLjQgZmFrZSBwZGYgY29udGVudCA=
+--MIX--

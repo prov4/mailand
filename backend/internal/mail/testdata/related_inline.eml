@@ -1,0 +1,27 @@
+From: a@example.com
+To: b@example.org
+Subject: Inline image
+Date: Sat, 07 Mar 2026 12:00:00 +0000
+MIME-Version: 1.0
+Content-Type: multipart/related; boundary="REL"
+
+--REL
+Content-Type: multipart/alternative; boundary="ALT"
+
+--ALT
+Content-Type: text/plain
+
+See the logo.
+--ALT
+Content-Type: text/html
+
+<p>See the logo <img src="cid:logo@x"></p>
+--ALT--
+--REL
+Content-Type: image/png; name="logo.png"
+Content-Disposition: inline; filename="logo.png"
+Content-ID: <logo@x>
+Content-Transfer-Encoding: base64
+
+iVBORw0KGgoAAAANSUhEUg==
+--REL--

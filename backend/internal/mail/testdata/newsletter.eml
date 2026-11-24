@@ -1,0 +1,17 @@
+From: "Shop Weekly" <deals@shop.example>
+To: josip@example.org
+Subject: Weekly deals &amp; offers
+Date: Thu, 05 Mar 2026 08:00:00 +0000
+Message-ID: <nl1@shop.example>
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+<!DOCTYPE html><html><head><title>Deals</title><style>.x{color:red}</style>
+<script>var secret_tracking = 1;</script></head>
+<body><div style=3D"display:none">preheader hidden</div>
+<h1>Big Sale</h1><p>Save 50% on =E2=80=9Cwidgets=E2=80=9D &amp; gadgets.</p>
+<a href=3D"https://shop.example/buy">Buy now</a>
+<img src=3D"https://track.example/pixel.gif" width=3D"1" height=3D"1">
+<script>alert('x')</script>
+</body></html>

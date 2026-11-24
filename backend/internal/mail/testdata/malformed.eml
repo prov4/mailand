@@ -1,0 +1,14 @@
+From: Bad <bad@example.com>
+this line is not a header
+Subject: Broken
+Content-Type: multipart/mixed; boundary="NOEND"
+
+--NOEND
+Content-Type: text/plain
+
+First part without end boundary.
+--NOEND
+Content-Type: application/octet-stream
+Content-Disposition: attachment; filename="x.bin"
+
+binarydata

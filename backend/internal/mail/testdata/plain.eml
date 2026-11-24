@@ -1,0 +1,21 @@
+From: Ana Horvat <ana@example.com>
+To: Josip <josip@example.org>, marko@example.org
+Cc: "Kovač, Petra" <petra@example.net>
+Subject: Sastanak u petak
+Date: Tue, 03 Mar 2026 10:15:00 +0100
+Message-ID: <abc123@example.com>
+In-Reply-To: <prev1@example.org>
+References: <root0@example.org> <prev1@example.org>
+Content-Type: text/plain; charset=utf-8
+
+Bok Josipe,
+
+vidimo se u petak u 10h.
+
+> stari citat
+> jos citata
+
+Ana
+-- 
+Ana Horvat
+Example d.o.o.

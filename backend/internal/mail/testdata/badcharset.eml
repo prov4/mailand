@@ -1,0 +1,4 @@
+From: a@example.com
+Content-Type: text/plain; charset=x-unknown-9
+
+Hello bad charset café
