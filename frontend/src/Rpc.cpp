@@ -258,6 +258,13 @@ void Rpc::setConnected(bool connected, const QString &error)
 {
     if (m_connected != connected) {
         m_connected = connected;
+        // Sync state is only valid for the current event stream; a pass that was
+        // running when the stream dropped never sends SYNC_FINISHED to us.
+        if (!m_syncing.isEmpty() || !m_remaining.isEmpty()) {
+            m_syncing.clear();
+            m_remaining.clear();
+            emit syncingChanged();
+        }
         emit connectedChanged();
     }
     if (m_lastError != error) {
@@ -270,10 +277,20 @@ void Rpc::handleEvent(int type, const QString &accountId, const QString &folderI
                       const QString &detail)
 {
     const bool wasSyncing = syncing();
+    const int wasRemaining = syncRemaining();
     if (type == mailand::v1::DaemonEvent::SYNC_STARTED) {
         m_syncing.insert(accountId);
+    } else if (type == mailand::v1::DaemonEvent::SYNC_PROGRESS) {
+        // Also marks syncing: the UI may have connected in the middle of a pass.
+        m_syncing.insert(accountId);
+        m_remaining.insert(accountId + QLatin1Char('\n') + folderId, detail.toInt());
     } else if (type == mailand::v1::DaemonEvent::SYNC_FINISHED) {
-        m_syncing.remove(accountId);
+        // "backlog": the daemon starts the next chunk right away; keep the indicator steady.
+        if (detail != QLatin1String("backlog")) {
+            m_syncing.remove(accountId);
+            const QString prefix = accountId + QLatin1Char('\n');
+            m_remaining.removeIf([&](const auto &it) { return it.key().startsWith(prefix); });
+        }
         if (m_reauthAccount == accountId) {
             m_reauthAccount.clear();
             emit reauthAccountChanged();
@@ -284,9 +301,17 @@ void Rpc::handleEvent(int type, const QString &accountId, const QString &folderI
             emit reauthAccountChanged();
         }
     }
-    if (wasSyncing != syncing())
+    if (wasSyncing != syncing() || wasRemaining != syncRemaining())
         emit syncingChanged();
     emit daemonEvent(type, accountId, folderId, detail);
+}
+
+int Rpc::syncRemaining() const
+{
+    int n = 0;
+    for (int v : m_remaining)
+        n += v;
+    return n;
 }
 
 // Dedicated thread: blocking SubscribeEvents reader with reconnect/backoff (0.5s..10s).

@@ -2,6 +2,7 @@
 
 #include <QList>
 #include <QObject>
+#include <QHash>
 #include <QSet>
 #include <QString>
 #include <QVariantList>
@@ -38,6 +39,8 @@ class Rpc : public QObject
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged FINAL)
     Q_PROPERTY(QVariantList accounts READ accounts NOTIFY accountsChanged FINAL)
     Q_PROPERTY(bool syncing READ syncing NOTIFY syncingChanged FINAL)
+    // Messages still to download across accounts (initial/backlog sync); 0 if unknown.
+    Q_PROPERTY(int syncRemaining READ syncRemaining NOTIFY syncingChanged FINAL)
     Q_PROPERTY(QString reauthAccount READ reauthAccount NOTIFY reauthAccountChanged FINAL)
 
 public:
@@ -55,6 +58,7 @@ public:
     QString lastError() const { return m_lastError; }
     QVariantList accounts() const { return m_accounts; }
     bool syncing() const { return !m_syncing.isEmpty(); }
+    int syncRemaining() const;
     QString reauthAccount() const { return m_reauthAccount; }
 
     // $MAILAND_SOCKET, $XDG_RUNTIME_DIR/mailand.sock, /tmp/mailand-<uid>.sock (same as backend).
@@ -113,6 +117,7 @@ private:
     bool m_connected = false;
     QString m_lastError;
     QSet<QString> m_syncing;
+    QHash<QString, int> m_remaining; // "account\nfolder" -> messages left
     QString m_reauthAccount;
 
     // Event thread state.

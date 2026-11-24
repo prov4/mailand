@@ -50,7 +50,8 @@ MessageModel::MessageModel(QObject *parent) : QAbstractListModel(parent)
             [this](int type, const QString &account, const QString &, const QString &) {
                 if ((type != 2 && type != 3) || (m_folderId.isEmpty() && !searchMode()))
                     return;
-                if (m_accountId.isEmpty() || account == m_accountId)
+                // Throttle (see FolderModel): refresh at most every 300 ms while events stream in.
+                if ((m_accountId.isEmpty() || account == m_accountId) && !m_eventDebounce.isActive())
                     m_eventDebounce.start();
             });
 }

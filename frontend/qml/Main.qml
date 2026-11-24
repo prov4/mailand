@@ -265,7 +265,9 @@ ApplicationWindow {
                 }
                 Text {
                     visible: Rpc.syncing
-                    text: "Syncing…"
+                    text: Rpc.syncRemaining > 0
+                          ? "Syncing… " + Rpc.syncRemaining.toLocaleString(Qt.locale(), 'f', 0) + " left"
+                          : "Syncing…"
                     color: Theme.textMuted
                     font.pixelSize: 11
                 }

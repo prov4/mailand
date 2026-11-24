@@ -32,9 +32,28 @@ const (
 
 // pass runs one sync pass. Per-folder IMAP errors (NO/BAD) are logged and
 // skipped; connection-level errors abort the pass so the session reconnects.
+//
+// At most Manager.passBudget new messages are downloaded (newest first); if
+// more remain, w.backlog is set and the pass ends with SyncFinished "backlog".
 func (w *worker) pass(ctx context.Context, c *conn, kind passKind) error {
+	w.backlog = false
+	start := time.Now()
+	fetched := 0
 	w.emit(EventSyncStarted, "", "")
-	defer w.emit(EventSyncFinished, "", "")
+	defer func() {
+		detail := ""
+		if w.backlog {
+			detail = "backlog"
+		}
+		w.emit(EventSyncFinished, "", detail)
+		w.log.Info("sync pass done", "full", kind == passFull, "fetched", fetched,
+			"backlog", w.backlog, "took", time.Since(start).Round(time.Millisecond))
+	}()
+	var budget *int
+	if w.m.passBudget > 0 {
+		b := w.m.passBudget
+		budget = &b
+	}
 
 	var folders []store.Folder
 	var err error
@@ -51,7 +70,6 @@ func (w *worker) pass(ctx context.Context, c *conn, kind passKind) error {
 		return errors.New(`gmail: no \All mailbox visible over IMAP (enable "Show in IMAP" for All Mail in Gmail settings)`)
 	}
 
-	fetched := 0
 	stopRefresher := func() {}
 	if gmail {
 		stop := w.startLabelRefresher(ctx, folders)
@@ -63,8 +81,9 @@ func (w *worker) pass(ctx context.Context, c *conn, kind passKind) error {
 		if !f.IsSyncSource || (kind == passInbox && !inboxPassWants(f, gmail)) {
 			continue
 		}
-		n, err := w.syncSource(ctx, c, f)
+		n, more, err := w.syncSourceN(ctx, c, f, budget)
 		fetched += n
+		w.backlog = w.backlog || more
 		if err != nil {
 			if ctx.Err() != nil || isConnErr(err) {
 				return err
@@ -110,14 +129,23 @@ func (c *conn) selectRO(path string) (*imap.SelectData, error) {
 // already in the store, so after a crash only the missing ones are fetched
 // again; L jumps to the highest server UID only after the whole range is done.
 func (w *worker) syncSource(ctx context.Context, c *conn, f store.Folder) (int, error) {
+	n, _, err := w.syncSourceN(ctx, c, f, nil)
+	return n, err
+}
+
+// syncSourceN is syncSource with a download budget shared across the pass
+// (nil: unlimited). It downloads at most *budget new messages, newest first,
+// and reports more=true if some were left; last_synced_uid then stays put so
+// the next pass picks up the rest.
+func (w *worker) syncSourceN(ctx context.Context, c *conn, f store.Folder, budget *int) (int, bool, error) {
 	sel, err := c.selectRO(f.Path)
 	if err != nil {
-		return 0, fmt.Errorf("select %q: %w", f.Path, err)
+		return 0, false, fmt.Errorf("select %q: %w", f.Path, err)
 	}
 	if f.UIDValidity != 0 && f.UIDValidity != int64(sel.UIDValidity) {
 		w.log.Info("UIDVALIDITY changed, resyncing folder", "folder", f.Path)
 		if err := w.m.st.ClearFolderMessages(ctx, f.ID); err != nil {
-			return 0, err
+			return 0, false, err
 		}
 		w.removeFolderBlobs(f.Path)
 		f.LastSyncedUID, f.HighestModSeq = 0, 0
@@ -127,7 +155,7 @@ func (w *worker) syncSource(ctx context.Context, c *conn, f store.Folder) (int, 
 
 	res, err := c.UIDSearch(&imap.SearchCriteria{}, nil).Wait()
 	if err != nil {
-		return 0, fmt.Errorf("search %q: %w", f.Path, err)
+		return 0, false, fmt.Errorf("search %q: %w", f.Path, err)
 	}
 	server := make(map[uint32]struct{}, len(res.AllUIDs()))
 	var serverUIDs []uint32
@@ -138,7 +166,7 @@ func (w *worker) syncSource(ctx context.Context, c *conn, f store.Folder) (int, 
 
 	stored, err := w.m.st.FlagStates(ctx, f.ID)
 	if err != nil {
-		return 0, err
+		return 0, false, err
 	}
 
 	// Expunges.
@@ -150,7 +178,7 @@ func (w *worker) syncSource(ctx context.Context, c *conn, f store.Folder) (int, 
 	}
 	if len(gone) > 0 {
 		if err := w.m.st.DeleteByUIDs(ctx, f.ID, gone); err != nil {
-			return 0, err
+			return 0, false, err
 		}
 		for _, u := range gone {
 			delete(stored, u)
@@ -162,7 +190,7 @@ func (w *worker) syncSource(ctx context.Context, c *conn, f store.Folder) (int, 
 	// Flag changes on mail we already have.
 	if len(stored) > 0 {
 		if err := w.refreshFlags(ctx, c, f, sel, stored); err != nil {
-			return 0, err
+			return 0, false, err
 		}
 	}
 
@@ -175,6 +203,17 @@ func (w *worker) syncSource(ctx context.Context, c *conn, f store.Folder) (int, 
 	}
 	slices.Sort(todo)
 	slices.Reverse(todo)
+	remaining := len(todo)
+	more := false
+	if budget != nil {
+		if len(todo) > *budget {
+			todo, more = todo[:max(*budget, 0)], true
+		}
+		*budget -= len(todo)
+	}
+	if remaining > fetchBatch {
+		w.emit(EventSyncProgress, f.ID, strconv.Itoa(remaining))
+	}
 	total := 0
 	for i := 0; i < len(todo); i += fetchBatch {
 		batch := todo[i:min(i+fetchBatch, len(todo))]
@@ -184,7 +223,11 @@ func (w *worker) syncSource(ctx context.Context, c *conn, f store.Folder) (int, 
 			w.emit(EventNewMessages, f.ID, strconv.Itoa(n))
 		}
 		if err != nil {
-			return total, fmt.Errorf("fetch %q: %w", f.Path, err)
+			return total, false, fmt.Errorf("fetch %q: %w", f.Path, err)
+		}
+		remaining -= len(batch)
+		if more || remaining > 0 {
+			w.emit(EventSyncProgress, f.ID, strconv.Itoa(remaining))
 		}
 		if w.m.batchHook != nil {
 			w.m.batchHook(ctx)
@@ -192,11 +235,11 @@ func (w *worker) syncSource(ctx context.Context, c *conn, f store.Folder) (int, 
 	}
 
 	last := f.LastSyncedUID
-	if len(serverUIDs) > 0 {
+	if len(serverUIDs) > 0 && !more { // with a backlog, older UIDs are still missing
 		last = max(last, int64(slices.Max(serverUIDs)))
 	}
 	err = w.m.st.UpdateFolderSyncState(ctx, f.ID, int64(uv), last, int64(sel.HighestModSeq))
-	return total, err
+	return total, more, err
 }
 
 // refreshFlags applies server-side flag changes to stored messages: with

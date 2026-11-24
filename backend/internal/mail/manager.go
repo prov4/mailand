@@ -32,7 +32,15 @@ const (
 	// login (the account then stops retrying until TriggerSync); otherwise a
 	// short human-readable message that never contains secrets.
 	EventError
+	// EventSyncProgress carries in Detail how many messages FolderID still has
+	// to download. A large backlog is fetched over several passes, each ending
+	// with EventSyncFinished Detail "backlog".
+	EventSyncProgress
 )
+
+// defaultPassBudget is how many new messages one sync pass downloads before it
+// yields, so IDLE wakes and TriggerSync are served during a long initial sync.
+const defaultPassBudget = 500
 
 // Event is delivered to the notify callback given to NewManager.
 type Event struct {
@@ -66,6 +74,7 @@ type Manager struct {
 	plain bool // dial without TLS
 	// labelInterval is the period of Gmail label refreshes during a pass.
 	labelInterval time.Duration
+	passBudget    int                   // new messages per pass; <= 0 means unlimited
 	onLabelConn   func(*conn)           // called with each extra label-refresh connection
 	batchHook     func(context.Context) // called after each fetched source batch
 	password      func(accountID string) (string, error)
@@ -84,6 +93,7 @@ func NewManager(cfg *config.Config, st *store.Store, blobDir string, notify func
 		events:   make(chan Event, 256),
 		workers:  map[string]*worker{},
 		password: auth.GetPassword, labelInterval: defaultLabelInterval,
+		passBudget: defaultPassBudget,
 	}
 	m.tokenSource = func(ctx context.Context, a *config.Account) (oauth2.TokenSource, error) {
 		return auth.TokenSource(ctx, m.cfg, a)

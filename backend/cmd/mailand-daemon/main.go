@@ -130,6 +130,8 @@ func toPB(ev mail.Event) *pb.DaemonEvent {
 		t = pb.DaemonEvent_NEW_MESSAGES
 	case mail.EventFlagsUpdated:
 		t = pb.DaemonEvent_FLAGS_UPDATED
+	case mail.EventSyncProgress:
+		t = pb.DaemonEvent_SYNC_PROGRESS
 	}
 	return &pb.DaemonEvent{Type: t, AccountId: ev.AccountID, FolderId: ev.FolderID, Detail: ev.Detail}
 }

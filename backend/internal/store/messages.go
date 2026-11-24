@@ -92,11 +92,12 @@ func (s *Store) UpsertMessage(ctx context.Context, m Message, folderIDs []string
 		// Folders the message was in before, so their counts can be fixed.
 		var old []string
 		var prev int64
+		prevRead := true // a new message had no unread contribution before
 		var err error
 		if m.GmMsgID != nil {
-			err = tx.QueryRowContext(ctx, `SELECT seq FROM messages WHERE account_id=? AND gm_msgid=?`, m.AccountID, *m.GmMsgID).Scan(&prev)
+			err = tx.QueryRowContext(ctx, `SELECT seq, is_read FROM messages WHERE account_id=? AND gm_msgid=?`, m.AccountID, *m.GmMsgID).Scan(&prev, &prevRead)
 		} else {
-			err = tx.QueryRowContext(ctx, `SELECT seq FROM messages WHERE folder_id=? AND uid=?`, m.FolderID, m.UID).Scan(&prev)
+			err = tx.QueryRowContext(ctx, `SELECT seq, is_read FROM messages WHERE folder_id=? AND uid=?`, m.FolderID, m.UID).Scan(&prev, &prevRead)
 		}
 		if err == nil {
 			if old, err = queryStrings(ctx, tx, `SELECT folder_id FROM message_folders WHERE message_seq=?`, prev); err != nil {
@@ -128,7 +129,10 @@ RETURNING seq`,
 		if err := replaceMemberships(ctx, tx, seq, m.TimestampUnix, folderIDs); err != nil {
 			return err
 		}
-		return recomputeUnread(ctx, tx, append(old, folderIDs...))
+		if err := adjustUnread(ctx, tx, old, -unread(prevRead)); err != nil {
+			return err
+		}
+		return adjustUnread(ctx, tx, folderIDs, unread(m.IsRead))
 	})
 	return seq, err
 }
@@ -150,7 +154,8 @@ func replaceMemberships(ctx context.Context, tx *sql.Tx, seq, ts int64, folderID
 func (s *Store) SetMessageFolders(ctx context.Context, seq int64, folderIDs []string) error {
 	return s.inTx(ctx, func(tx *sql.Tx) error {
 		var ts int64
-		if err := tx.QueryRowContext(ctx, `SELECT timestamp_unix FROM messages WHERE seq=?`, seq).Scan(&ts); err != nil {
+		var isRead bool
+		if err := tx.QueryRowContext(ctx, `SELECT timestamp_unix, is_read FROM messages WHERE seq=?`, seq).Scan(&ts, &isRead); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return ErrNotFound
 			}
@@ -163,7 +168,10 @@ func (s *Store) SetMessageFolders(ctx context.Context, seq int64, folderIDs []st
 		if err := replaceMemberships(ctx, tx, seq, ts, folderIDs); err != nil {
 			return err
 		}
-		return recomputeUnread(ctx, tx, append(old, folderIDs...))
+		if err := adjustUnread(ctx, tx, old, -unread(isRead)); err != nil {
+			return err
+		}
+		return adjustUnread(ctx, tx, folderIDs, unread(isRead))
 	})
 }
 
@@ -172,15 +180,18 @@ func (s *Store) SetMessageFolders(ctx context.Context, seq int64, folderIDs []st
 func (s *Store) UpdateFlags(ctx context.Context, folderID string, uid uint32, isRead, isFlagged bool) error {
 	return s.inTx(ctx, func(tx *sql.Tx) error {
 		var seq int64
-		err := tx.QueryRowContext(ctx, `UPDATE messages SET is_read=?, is_flagged=? WHERE folder_id=? AND uid=? RETURNING seq`,
-			b2i(isRead), b2i(isFlagged), folderID, uid).Scan(&seq)
+		var wasRead bool
+		err := tx.QueryRowContext(ctx, `SELECT seq, is_read FROM messages WHERE folder_id=? AND uid=?`, folderID, uid).Scan(&seq, &wasRead)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil
 		}
 		if err != nil {
 			return err
 		}
-		return recomputeForSeq(ctx, tx, seq)
+		if _, err := tx.ExecContext(ctx, `UPDATE messages SET is_read=?, is_flagged=? WHERE seq=?`, b2i(isRead), b2i(isFlagged), seq); err != nil {
+			return err
+		}
+		return adjustForSeq(ctx, tx, seq, unread(isRead)-unread(wasRead))
 	})
 }
 
@@ -192,16 +203,20 @@ func (s *Store) SetFlags(ctx context.Context, messageIDs []string, isRead, isFla
 	return s.inTx(ctx, func(tx *sql.Tx) error {
 		for _, id := range messageIDs {
 			var seq int64
-			err := tx.QueryRowContext(ctx, `
-UPDATE messages SET is_read = COALESCE(?, is_read), is_flagged = COALESCE(?, is_flagged)
-WHERE id=? RETURNING seq`, optBool(isRead), optBool(isFlagged), id).Scan(&seq)
+			var wasRead, nowRead bool
+			err := tx.QueryRowContext(ctx, `SELECT seq, is_read FROM messages WHERE id=?`, id).Scan(&seq, &wasRead)
 			if errors.Is(err, sql.ErrNoRows) {
 				continue
 			}
 			if err != nil {
 				return err
 			}
-			if err := recomputeForSeq(ctx, tx, seq); err != nil {
+			if err := tx.QueryRowContext(ctx, `
+UPDATE messages SET is_read = COALESCE(?, is_read), is_flagged = COALESCE(?, is_flagged)
+WHERE seq=? RETURNING is_read`, optBool(isRead), optBool(isFlagged), seq).Scan(&nowRead); err != nil {
+				return err
+			}
+			if err := adjustForSeq(ctx, tx, seq, unread(nowRead)-unread(wasRead)); err != nil {
 				return err
 			}
 		}
@@ -216,12 +231,15 @@ func optBool(p *bool) any {
 	return b2i(*p)
 }
 
-func recomputeForSeq(ctx context.Context, tx *sql.Tx, seq int64) error {
-	fs, err := queryStrings(ctx, tx, `SELECT folder_id FROM message_folders WHERE message_seq=?`, seq)
-	if err != nil {
-		return err
+// adjustForSeq applies an unread-count delta to every folder the message is in.
+func adjustForSeq(ctx context.Context, tx *sql.Tx, seq int64, delta int) error {
+	if delta == 0 {
+		return nil
 	}
-	return recomputeUnread(ctx, tx, fs)
+	_, err := tx.ExecContext(ctx, `
+UPDATE folders SET unread_count = MAX(0, unread_count + ?)
+WHERE id IN (SELECT folder_id FROM message_folders WHERE message_seq=?)`, delta, seq)
+	return err
 }
 
 // DeleteByUIDs removes messages whose source is (folderID, uid in uids), i.e.

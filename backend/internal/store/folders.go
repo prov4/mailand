@@ -162,7 +162,36 @@ func queryStrings(ctx context.Context, q execer, query string, args ...any) ([]s
 	return out, rows.Err()
 }
 
-// recomputeUnread sets unread_count for the given folders from the source of truth.
+func unread(isRead bool) int {
+	if isRead {
+		return 0
+	}
+	return 1
+}
+
+// adjustUnread adds delta to unread_count of each distinct folder. Per-message
+// mutations use this instead of recomputeUnread: a full COUNT per stored
+// message made a large initial sync quadratic (100% CPU for hours on Gmail,
+// where every message is in All Mail).
+func adjustUnread(ctx context.Context, q execer, folderIDs []string, delta int) error {
+	if delta == 0 {
+		return nil
+	}
+	seen := map[string]bool{}
+	for _, id := range folderIDs {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		if _, err := q.ExecContext(ctx, `UPDATE folders SET unread_count = MAX(0, unread_count + ?) WHERE id = ?`, delta, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// recomputeUnread sets unread_count for the given folders from the source of
+// truth. Used for bulk deletes only; see adjustUnread.
 func recomputeUnread(ctx context.Context, q execer, folderIDs []string) error {
 	seen := map[string]bool{}
 	for _, id := range folderIDs {

@@ -42,6 +42,7 @@ type worker struct {
 	stored  atomic.Int64 // messages stored by this worker, ever
 
 	healthy bool // set by session after a successful pass; run goroutine only
+	backlog bool // set by pass: new mail was left for a later pass; run goroutine only
 }
 
 func newWorker(m *Manager, a *config.Account) *worker {
@@ -119,6 +120,7 @@ func (w *worker) session(ctx context.Context) error {
 	}
 
 	kind := passFull
+	backlog := false // a full pass left mail undownloaded
 	for {
 		if kind == passFull {
 			select { // a full pass covers any pending IDLE wake
@@ -130,6 +132,22 @@ func (w *worker) session(ctx context.Context) error {
 			return err
 		}
 		w.healthy = true
+		if kind == passFull {
+			backlog = w.backlog
+		} else {
+			backlog = backlog || w.backlog
+		}
+		if backlog { // keep going without waiting; serve new mail first
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-w.wake:
+				kind = passInbox
+			default:
+				kind = passFull
+			}
+			continue
+		}
 
 		t := time.NewTimer(w.acct.PollInterval)
 		select {

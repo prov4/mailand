@@ -32,6 +32,9 @@ const (
 	DaemonEvent_NEW_MESSAGES  DaemonEvent_Type = 2
 	DaemonEvent_FLAGS_UPDATED DaemonEvent_Type = 3
 	DaemonEvent_ERROR         DaemonEvent_Type = 4
+	// detail: messages still to download in folder_id (initial/backlog sync).
+	// SYNC_FINISHED with detail "backlog" means another pass follows at once.
+	DaemonEvent_SYNC_PROGRESS DaemonEvent_Type = 5
 )
 
 // Enum value maps for DaemonEvent_Type.
@@ -42,6 +45,7 @@ var (
 		2: "NEW_MESSAGES",
 		3: "FLAGS_UPDATED",
 		4: "ERROR",
+		5: "SYNC_PROGRESS",
 	}
 	DaemonEvent_Type_value = map[string]int32{
 		"SYNC_STARTED":  0,
@@ -49,6 +53,7 @@ var (
 		"NEW_MESSAGES":  2,
 		"FLAGS_UPDATED": 3,
 		"ERROR":         4,
+		"SYNC_PROGRESS": 5,
 	}
 )
 
@@ -1420,19 +1425,20 @@ const file_mailand_proto_rawDesc = "" +
 	"\rforward_of_id\x18\n" +
 	" \x01(\tR\vforwardOfId\"A\n" +
 	"\x13SendMessageResponse\x12*\n" +
-	"\x11message_id_header\x18\x01 \x01(\tR\x0fmessageIdHeader\"\xf0\x01\n" +
+	"\x11message_id_header\x18\x01 \x01(\tR\x0fmessageIdHeader\"\x83\x02\n" +
 	"\vDaemonEvent\x120\n" +
 	"\x04type\x18\x01 \x01(\x0e2\x1c.mailand.v1.DaemonEvent.TypeR\x04type\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x02 \x01(\tR\taccountId\x12\x1b\n" +
 	"\tfolder_id\x18\x03 \x01(\tR\bfolderId\x12\x16\n" +
-	"\x06detail\x18\x04 \x01(\tR\x06detail\"[\n" +
+	"\x06detail\x18\x04 \x01(\tR\x06detail\"n\n" +
 	"\x04Type\x12\x10\n" +
 	"\fSYNC_STARTED\x10\x00\x12\x11\n" +
 	"\rSYNC_FINISHED\x10\x01\x12\x10\n" +
 	"\fNEW_MESSAGES\x10\x02\x12\x11\n" +
 	"\rFLAGS_UPDATED\x10\x03\x12\t\n" +
-	"\x05ERROR\x10\x042\xce\x05\n" +
+	"\x05ERROR\x10\x04\x12\x11\n" +
+	"\rSYNC_PROGRESS\x10\x052\xce\x05\n" +
 	"\x0eMailandService\x12:\n" +
 	"\fListAccounts\x12\x11.mailand.v1.Empty\x1a\x17.mailand.v1.AccountList\x12A\n" +
 	"\vListFolders\x12\x1a.mailand.v1.AccountRequest\x1a\x16.mailand.v1.FolderList\x12N\n" +

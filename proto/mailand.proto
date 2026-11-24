@@ -155,6 +155,9 @@ message DaemonEvent {
     NEW_MESSAGES = 2;
     FLAGS_UPDATED = 3;
     ERROR = 4;
+    // detail: messages still to download in folder_id (initial/backlog sync).
+    // SYNC_FINISHED with detail "backlog" means another pass follows at once.
+    SYNC_PROGRESS = 5;
   }
   Type type = 1;
   string account_id = 2;

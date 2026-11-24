@@ -22,6 +22,35 @@ Rectangle {
         anchors.margins: Theme.s2
         spacing: Theme.s2
 
+        // Send/Receive: sending is immediate (no outbox), so this checks every
+        // account for new mail right away instead of waiting for IDLE/polling.
+        Button {
+            id: syncButton
+            Layout.fillWidth: true
+            implicitHeight: 32
+            enabled: Rpc.connected
+            hoverEnabled: true
+            focusPolicy: Qt.NoFocus
+            text: (Rpc.syncing ? "⟳  Receiving…" : "⟳  Send/Receive")
+            ToolTip.visible: hovered
+            ToolTip.delay: 400
+            ToolTip.text: "Check all accounts for new mail (F5 / Ctrl+R: current account)"
+            onClicked: Rpc.triggerSync("")
+            background: Rectangle {
+                radius: Theme.radius
+                color: syncButton.down ? Theme.selection
+                     : syncButton.hovered ? Theme.surfaceAlt : Theme.bg
+                border.color: Theme.border
+            }
+            contentItem: Label {
+                text: syncButton.text
+                color: syncButton.enabled ? Theme.text : Theme.textFaint
+                font.pixelSize: Theme.fontSmall
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+            }
+        }
+
         // Account switcher (only with more than one account)
         Repeater {
             model: Rpc.accounts.length > 1 ? Rpc.accounts : []

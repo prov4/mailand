@@ -54,7 +54,10 @@ FolderModel::FolderModel(QObject *parent) : QAbstractListModel(parent)
     connect(Rpc::instance(), &Rpc::daemonEvent, this,
             [this](int type, const QString &account, const QString &, const QString &) {
                 // 2 NEW_MESSAGES, 3 FLAGS_UPDATED
-                if ((type == 2 || type == 3) && !m_accountId.isEmpty() && account == m_accountId)
+                // Throttle, not debounce: during a long sync events arrive faster
+                // than the interval, and restarting would postpone refresh until the end.
+                if ((type == 2 || type == 3) && !m_accountId.isEmpty() && account == m_accountId
+                    && !m_debounce.isActive())
                     m_debounce.start();
             });
 }
