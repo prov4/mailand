@@ -19,6 +19,7 @@ proto: tools
 
 backend:
 	$(GO) -C backend build -o $(BIN_DIR)/mailand-daemon ./cmd/mailand-daemon
+	$(GO) -C backend build -o $(BIN_DIR)/mailand-seed ./cmd/mailand-seed
 
 frontend:
 	cmake -S frontend -B build/frontend -DCMAKE_BUILD_TYPE=Debug

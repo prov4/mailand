@@ -26,18 +26,21 @@ func main() {
 		os.Exit(code)
 	}
 	socket := flag.String("socket", config.SocketPath(), "Unix socket path to listen on")
+	offline := flag.Bool("offline", false, "dev mode: no IMAP; serve accounts from the store, flag changes write the store only")
 	flag.Parse()
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
-	if err := run(log, *socket); err != nil {
+	if err := run(log, *socket, *offline); err != nil {
 		log.Error("fatal", "err", err)
 		os.Exit(1)
 	}
 }
 
-func run(log *slog.Logger, socket string) error {
+func run(log *slog.Logger, socket string, offline bool) error {
 	cfg, err := config.Load(config.ConfigPath())
 	switch {
+	case offline && err != nil:
+		cfg = &config.Config{} // config is optional offline; accounts come from the store
 	case errors.Is(err, fs.ErrNotExist):
 		log.Warn("no config file; starting with zero accounts", "path", config.ConfigPath())
 		cfg = &config.Config{}
@@ -68,7 +71,10 @@ func run(log *slog.Logger, socket string) error {
 	// syncer == nil to report FailedPrecondition when there are no accounts.
 	var syncer rpc.Syncer
 	var mgr *mail.Manager
-	if len(cfg.Accounts) > 0 {
+	if offline {
+		syncer = rpc.NewOfflineSyncer(st, broker)
+		log.Warn("offline mode: no IMAP, flag changes are local only")
+	} else if len(cfg.Accounts) > 0 {
 		mgr = mail.NewManager(cfg, st, config.BlobDir(), func(ev mail.Event) {
 			broker.Publish(toPB(ev)) // non-blocking
 		}, log)

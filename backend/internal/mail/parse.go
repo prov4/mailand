@@ -342,7 +342,8 @@ func readText(r io.Reader) string {
 	return strings.ReplaceAll(s, "\r\n", "\n")
 }
 
-var errNoPart = errors.New("mail: part not found")
+// ErrNoPart is returned by ExtractPart when the part path does not exist.
+var ErrNoPart = errors.New("mail: part not found")
 
 // ExtractPart returns the decoded content of the leaf part at partPath
 // (numbering as in Attachment.PartPath).
@@ -353,7 +354,7 @@ func ExtractPart(r io.Reader, partPath string) ([]byte, Attachment, error) {
 	}
 	e, path := findPart(root, "", partPath, 0)
 	if e == nil {
-		return nil, Attachment{}, errNoPart
+		return nil, Attachment{}, ErrNoPart
 	}
 	t, _ := mediaType(e.Header)
 	disp, dparams := disposition(e.Header)

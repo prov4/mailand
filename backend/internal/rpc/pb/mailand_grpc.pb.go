@@ -26,6 +26,7 @@ const (
 	MailandService_ListFolders_FullMethodName     = "/mailand.v1.MailandService/ListFolders"
 	MailandService_ListMessages_FullMethodName    = "/mailand.v1.MailandService/ListMessages"
 	MailandService_GetMessage_FullMethodName      = "/mailand.v1.MailandService/GetMessage"
+	MailandService_GetAttachment_FullMethodName   = "/mailand.v1.MailandService/GetAttachment"
 	MailandService_SearchMessages_FullMethodName  = "/mailand.v1.MailandService/SearchMessages"
 	MailandService_SetMessageFlags_FullMethodName = "/mailand.v1.MailandService/SetMessageFlags"
 	MailandService_SendMessage_FullMethodName     = "/mailand.v1.MailandService/SendMessage"
@@ -43,6 +44,7 @@ type MailandServiceClient interface {
 	// Mail Operations
 	ListMessages(ctx context.Context, in *ListMessagesRequest, opts ...grpc.CallOption) (*MessageHeaderList, error)
 	GetMessage(ctx context.Context, in *MessageRequest, opts ...grpc.CallOption) (*MessageDetail, error)
+	GetAttachment(ctx context.Context, in *AttachmentRequest, opts ...grpc.CallOption) (*AttachmentData, error)
 	SearchMessages(ctx context.Context, in *SearchRequest, opts ...grpc.CallOption) (*MessageHeaderList, error)
 	SetMessageFlags(ctx context.Context, in *SetFlagsRequest, opts ...grpc.CallOption) (*Empty, error)
 	SendMessage(ctx context.Context, in *SendMessageRequest, opts ...grpc.CallOption) (*Empty, error)
@@ -93,6 +95,16 @@ func (c *mailandServiceClient) GetMessage(ctx context.Context, in *MessageReques
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(MessageDetail)
 	err := c.cc.Invoke(ctx, MailandService_GetMessage_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *mailandServiceClient) GetAttachment(ctx context.Context, in *AttachmentRequest, opts ...grpc.CallOption) (*AttachmentData, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AttachmentData)
+	err := c.cc.Invoke(ctx, MailandService_GetAttachment_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -168,6 +180,7 @@ type MailandServiceServer interface {
 	// Mail Operations
 	ListMessages(context.Context, *ListMessagesRequest) (*MessageHeaderList, error)
 	GetMessage(context.Context, *MessageRequest) (*MessageDetail, error)
+	GetAttachment(context.Context, *AttachmentRequest) (*AttachmentData, error)
 	SearchMessages(context.Context, *SearchRequest) (*MessageHeaderList, error)
 	SetMessageFlags(context.Context, *SetFlagsRequest) (*Empty, error)
 	SendMessage(context.Context, *SendMessageRequest) (*Empty, error)
@@ -195,6 +208,9 @@ func (UnimplementedMailandServiceServer) ListMessages(context.Context, *ListMess
 }
 func (UnimplementedMailandServiceServer) GetMessage(context.Context, *MessageRequest) (*MessageDetail, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetMessage not implemented")
+}
+func (UnimplementedMailandServiceServer) GetAttachment(context.Context, *AttachmentRequest) (*AttachmentData, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetAttachment not implemented")
 }
 func (UnimplementedMailandServiceServer) SearchMessages(context.Context, *SearchRequest) (*MessageHeaderList, error) {
 	return nil, status.Error(codes.Unimplemented, "method SearchMessages not implemented")
@@ -304,6 +320,24 @@ func _MailandService_GetMessage_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _MailandService_GetAttachment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AttachmentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MailandServiceServer).GetAttachment(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MailandService_GetAttachment_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MailandServiceServer).GetAttachment(ctx, req.(*AttachmentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _MailandService_SearchMessages_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SearchRequest)
 	if err := dec(in); err != nil {
@@ -409,6 +443,10 @@ var MailandService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetMessage",
 			Handler:    _MailandService_GetMessage_Handler,
+		},
+		{
+			MethodName: "GetAttachment",
+			Handler:    _MailandService_GetAttachment_Handler,
 		},
 		{
 			MethodName: "SearchMessages",

@@ -135,7 +135,8 @@ func setup(t *testing.T, withSync bool) *env {
 	g := e.srv.Register()
 	go g.Serve(lis)
 	t.Cleanup(func() { e.srv.Close(); e.broker.Close(); g.Stop() })
-	conn, err := grpc.NewClient("unix://"+path, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient("unix://"+path, grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(MaxMessageSize)))
 	if err != nil {
 		t.Fatal(err)
 	}

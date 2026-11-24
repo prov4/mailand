@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # WebEngine / WaylandClient are added in Milestone 3.
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 WebEngineCore WebEngineQuick)
 qt_standard_project_setup(REQUIRES 6.5)
 qt_policy(SET QTP0004 NEW)
 
@@ -41,18 +41,32 @@ target_link_libraries(mailand_proto PUBLIC protobuf::libprotobuf gRPC::grpc++)
 set_target_properties(mailand_proto PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # --- UI executable -----------------------------------------------------------
+file(GLOB MAILAND_QML_FILES CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} qml/*.qml)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/qml/Theme.qml)
+    set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+endif()
+
 qt_add_executable(mailand-ui src/main.cpp)
 
 qt_add_qml_module(mailand-ui
     URI Mailand
     VERSION 1.0
-    QML_FILES qml/Main.qml
-    SOURCES src/RpcClient.h src/RpcClient.cpp
+    QML_FILES ${MAILAND_QML_FILES}
+    SOURCES
+        src/Rpc.h src/Rpc.cpp
+        src/FolderModel.h src/FolderModel.cpp
+        src/MessageModel.h src/MessageModel.cpp
+        src/MessageView.h src/MessageView.cpp
+        src/MailWeb.h src/MailWeb.cpp
+        src/Format.h src/Format.cpp
+        src/SelfTest.h src/SelfTest.cpp
 )
 
-# The generated QML type registration includes <RpcClient.h>.
+# The generated QML type registration includes headers by bare name.
 target_include_directories(mailand-ui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_options(mailand-ui PRIVATE -Wall -Wextra)
 
 target_link_libraries(mailand-ui PRIVATE
     Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2
+    Qt6::WebEngineCore Qt6::WebEngineQuick
     mailand_proto)

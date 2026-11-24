@@ -24,6 +24,12 @@ const (
 	maxLimit           = 500
 	defaultSearchLimit = 50
 	maxSearchLimit     = 200
+
+	// MaxMessageSize is the gRPC send/receive limit: HTML bodies and
+	// attachments exceed the 4 MiB default.
+	MaxMessageSize = 64 << 20
+	// MaxAttachmentBytes caps GetAttachment payloads.
+	MaxAttachmentBytes = 50 << 20
 )
 
 // Syncer is implemented by mail.Manager.
@@ -59,7 +65,7 @@ func NewServer(st *store.Store, sync Syncer, broker *Broker, log *slog.Logger) *
 
 // Register creates a grpc.Server with s registered.
 func (s *Server) Register() *grpc.Server {
-	g := grpc.NewServer()
+	g := grpc.NewServer(grpc.MaxRecvMsgSize(MaxMessageSize), grpc.MaxSendMsgSize(MaxMessageSize))
 	pb.RegisterMailandServiceServer(g, s)
 	return g
 }
@@ -125,6 +131,7 @@ func (s *Server) ListFolders(ctx context.Context, req *pb.AccountRequest) (*pb.F
 	for _, f := range fs {
 		out.Folders = append(out.Folders, &pb.Folder{
 			Id: f.ID, AccountId: f.AccountID, Name: f.Name, Path: f.Path, UnreadCount: uint32(max(f.UnreadCount, 0)),
+			Kind: f.Kind, SpecialUse: f.SpecialUse,
 		})
 	}
 	return out, nil
@@ -205,10 +212,8 @@ func (s *Server) attachments(m store.Message) []*pb.AttachmentInfo {
 	}
 	var out []*pb.AttachmentInfo
 	for _, a := range p.Attachments {
-		if a.Inline {
-			continue
-		}
-		out = append(out, &pb.AttachmentInfo{Id: a.PartPath, Filename: a.Filename, MimeType: a.MIMEType, SizeBytes: uint64(max(a.Size, 0))})
+		out = append(out, &pb.AttachmentInfo{Id: a.PartPath, Filename: a.Filename, MimeType: a.MIMEType,
+			SizeBytes: uint64(max(a.Size, 0)), ContentId: a.ContentID, Inline: a.Inline})
 	}
 	return out
 }
@@ -230,6 +235,41 @@ func (s *Server) GetMessage(ctx context.Context, req *pb.MessageRequest) (*pb.Me
 		TextBody:    m.TextBody,
 		HtmlBody:    m.HTMLBody,
 		Attachments: s.attachments(m),
+	}, nil
+}
+
+// GetAttachment returns the decoded content of one MIME part of a message.
+func (s *Server) GetAttachment(ctx context.Context, req *pb.AttachmentRequest) (*pb.AttachmentData, error) {
+	if req.MessageId == "" || req.AttachmentId == "" {
+		return nil, status.Error(codes.InvalidArgument, "message_id and attachment_id are required")
+	}
+	m, err := s.st.GetMessage(ctx, req.MessageId)
+	if err != nil {
+		return nil, s.mapErr("GetAttachment", err, "message")
+	}
+	if m.RawBlobPath == "" {
+		return nil, status.Error(codes.FailedPrecondition, "message has no stored raw content")
+	}
+	f, err := os.Open(m.RawBlobPath)
+	if err != nil {
+		s.log.Warn("raw blob unavailable", "message", m.ID, "err", err)
+		return nil, status.Error(codes.FailedPrecondition, "message has no stored raw content")
+	}
+	defer f.Close()
+	data, meta, err := mailpkg.ExtractPart(f, req.AttachmentId)
+	if err != nil {
+		if errors.Is(err, mailpkg.ErrNoPart) {
+			return nil, status.Error(codes.NotFound, "attachment not found")
+		}
+		return nil, s.internal("GetAttachment", err)
+	}
+	if len(data) > MaxAttachmentBytes {
+		return nil, status.Errorf(codes.ResourceExhausted, "attachment larger than %d MiB", MaxAttachmentBytes>>20)
+	}
+	return &pb.AttachmentData{
+		Info: &pb.AttachmentInfo{Id: meta.PartPath, Filename: meta.Filename, MimeType: meta.MIMEType,
+			SizeBytes: uint64(len(data)), ContentId: meta.ContentID, Inline: meta.Inline},
+		Data: data,
 	}, nil
 }
 
