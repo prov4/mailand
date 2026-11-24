@@ -50,6 +50,8 @@ public:
     void setBody(const QString &v);
 
     Q_INVOKABLE void initNew(const QString &accountId);
+    // New message with To prefilled (from Contacts); not dirty until edited.
+    Q_INVOKABLE void initNewTo(const QString &accountId, const QString &to);
     Q_INVOKABLE void initReply(const QString &messageId, bool replyAll);
     Q_INVOKABLE void initForward(const QString &messageId);
     Q_INVOKABLE void send();

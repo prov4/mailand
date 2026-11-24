@@ -18,7 +18,12 @@ service MailandService {
   rpc SearchMessages(SearchRequest) returns (MessageHeaderList);
   rpc SetMessageFlags(SetFlagsRequest) returns (Empty);
   rpc SendMessage(SendMessageRequest) returns (SendMessageResponse);
-  rpc TriggerSync(AccountRequest) returns (Empty);
+  rpc TriggerSync(AccountRequest) returns (Empty); // mail, calendars and contacts
+
+  // Calendars & Contacts (read-only, synced from CalDAV/CardDAV)
+  rpc ListCalendars(Empty) returns (CalendarList);
+  rpc ListEvents(ListEventsRequest) returns (EventList);
+  rpc ListContacts(ListContactsRequest) returns (ContactList);
 
   // Real-time Push Events (New mail, sync status, flag updates)
   rpc SubscribeEvents(Empty) returns (stream DaemonEvent);
@@ -158,9 +163,69 @@ message DaemonEvent {
     // detail: messages still to download in folder_id (initial/backlog sync).
     // SYNC_FINISHED with detail "backlog" means another pass follows at once.
     SYNC_PROGRESS = 5;
+    CALENDARS_UPDATED = 6; // calendars or events of account_id changed
+    CONTACTS_UPDATED = 7;  // address books or contacts of account_id changed
   }
   Type type = 1;
   string account_id = 2;
   string folder_id = 3;
   string detail = 4;
+}
+
+message Calendar {
+  string id = 1;
+  string account_id = 2;
+  string name = 3;
+  string color = 4; // "#rrggbb", or "" (the UI picks one)
+  bool read_only = 5;
+}
+
+message CalendarList {
+  repeated Calendar calendars = 1;
+}
+
+message ListEventsRequest {
+  int64 start_unix = 1;              // inclusive
+  int64 end_unix = 2;                // exclusive; at most 400 days after start
+  repeated string calendar_ids = 3;  // empty = all calendars
+}
+
+// One occurrence of an event; recurring events are expanded by the daemon.
+message CalendarEvent {
+  string id = 1;          // unique per occurrence
+  string calendar_id = 2;
+  string uid = 3;         // iCalendar UID (shared by all occurrences)
+  string summary = 4;
+  string location = 5;
+  string description = 6;
+  int64 start_unix = 7;
+  int64 end_unix = 8;     // exclusive; all-day events end at local midnight
+  bool all_day = 9;
+  bool recurring = 10;
+  string organizer = 11;
+  string status = 12;     // "CONFIRMED", "TENTATIVE" or ""
+}
+
+message EventList {
+  repeated CalendarEvent events = 1; // sorted by start
+}
+
+message ListContactsRequest {
+  string query = 1;     // matches name, email or organization; "" = all
+  uint32 limit = 2;     // default 1000
+  bool email_only = 3;  // only contacts with an email address (composer autocomplete)
+}
+
+message Contact {
+  string id = 1;
+  string account_id = 2;
+  string address_book_id = 3;
+  string full_name = 4;
+  repeated string emails = 5;
+  repeated string phones = 6;
+  string organization = 7;
+}
+
+message ContactList {
+  repeated Contact contacts = 1;
 }

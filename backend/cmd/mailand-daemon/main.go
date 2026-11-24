@@ -5,14 +5,17 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+	_ "time/tzdata" // fallback zone database for calendar TZIDs
 
 	"mailand/backend/internal/config"
+	"mailand/backend/internal/dav"
 	"mailand/backend/internal/mail"
 	"mailand/backend/internal/rpc"
 	"mailand/backend/internal/rpc/pb"
@@ -22,7 +25,15 @@ import (
 
 const shutdownTimeout = 5 * time.Second
 
+// version is set at build time from the repo's VERSION file
+// (-ldflags "-X main.version=..."); "dev" for plain `go build`.
+var version = "dev"
+
 func main() {
+	if len(os.Args) == 2 && (os.Args[1] == "version" || os.Args[1] == "-version" || os.Args[1] == "--version") {
+		fmt.Println("mailand-daemon", version)
+		return
+	}
 	if handled, code := runSubcommand(os.Args[1:]); handled {
 		os.Exit(code)
 	}
@@ -73,6 +84,7 @@ func run(log *slog.Logger, socket string, offline bool) error {
 	var syncer rpc.Syncer
 	var sender rpc.Sender
 	var mgr *mail.Manager
+	var davMgr *dav.Manager
 	if offline {
 		syncer = rpc.NewOfflineSyncer(st, broker)
 		sender = send.NewOfflineSender(st, config.BlobDir(), func(accountID, folderID string) {
@@ -86,7 +98,9 @@ func run(log *slog.Logger, socket string, offline bool) error {
 		if err := mgr.Start(ctx); err != nil {
 			return err
 		}
-		syncer = mgr
+		davMgr = dav.NewManager(cfg, st, func(ev dav.Event) { broker.Publish(davToPB(ev)) }, log)
+		davMgr.Start(ctx)
+		syncer = syncers{mgr, davMgr}
 		sender = send.NewSender(ctx, cfg, st, mgr.TriggerSync, log)
 	}
 
@@ -96,7 +110,7 @@ func run(log *slog.Logger, socket string, offline bool) error {
 
 	errc := make(chan error, 1)
 	go func() { errc <- g.Serve(lis) }()
-	log.Info("listening", "socket", socket, "accounts", len(cfg.Accounts))
+	log.Info("listening", "version", version, "socket", socket, "accounts", len(cfg.Accounts))
 
 	select {
 	case err = <-errc:
@@ -116,6 +130,9 @@ func run(log *slog.Logger, socket string, offline bool) error {
 	if mgr != nil {
 		mgr.Stop() // before st.Close (deferred) so workers never write to a closed DB
 	}
+	if davMgr != nil {
+		davMgr.Stop()
+	}
 	return err
 }
 
@@ -134,4 +151,30 @@ func toPB(ev mail.Event) *pb.DaemonEvent {
 		t = pb.DaemonEvent_SYNC_PROGRESS
 	}
 	return &pb.DaemonEvent{Type: t, AccountId: ev.AccountID, FolderId: ev.FolderID, Detail: ev.Detail}
+}
+
+// syncers makes TriggerSync (Send/Receive, Ctrl+R) refresh mail, calendars
+// and contacts; flag changes go to mail only.
+type syncers struct {
+	*mail.Manager
+	dav *dav.Manager
+}
+
+func (s syncers) TriggerSync(accountID string) error {
+	if err := s.Manager.TriggerSync(accountID); err != nil {
+		return err
+	}
+	s.dav.TriggerSync(accountID)
+	return nil
+}
+
+func davToPB(ev dav.Event) *pb.DaemonEvent {
+	t := pb.DaemonEvent_ERROR
+	switch ev.Kind {
+	case dav.CalendarsUpdated:
+		t = pb.DaemonEvent_CALENDARS_UPDATED
+	case dav.ContactsUpdated:
+		t = pb.DaemonEvent_CONTACTS_UPDATED
+	}
+	return &pb.DaemonEvent{Type: t, AccountId: ev.AccountID, Detail: ev.Detail}
 }

@@ -63,7 +63,7 @@ func TestOpenIdempotentAndPragmas(t *testing.T) {
 	defer s.Close()
 	var v, fk int
 	must(t, s.db.QueryRow("PRAGMA user_version").Scan(&v))
-	if v != 1 {
+	if v != len(migrations) {
 		t.Fatalf("user_version=%d", v)
 	}
 	// every pooled connection must have FKs on

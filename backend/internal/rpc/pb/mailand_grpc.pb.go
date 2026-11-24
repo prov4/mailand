@@ -31,6 +31,9 @@ const (
 	MailandService_SetMessageFlags_FullMethodName = "/mailand.v1.MailandService/SetMessageFlags"
 	MailandService_SendMessage_FullMethodName     = "/mailand.v1.MailandService/SendMessage"
 	MailandService_TriggerSync_FullMethodName     = "/mailand.v1.MailandService/TriggerSync"
+	MailandService_ListCalendars_FullMethodName   = "/mailand.v1.MailandService/ListCalendars"
+	MailandService_ListEvents_FullMethodName      = "/mailand.v1.MailandService/ListEvents"
+	MailandService_ListContacts_FullMethodName    = "/mailand.v1.MailandService/ListContacts"
 	MailandService_SubscribeEvents_FullMethodName = "/mailand.v1.MailandService/SubscribeEvents"
 )
 
@@ -49,6 +52,10 @@ type MailandServiceClient interface {
 	SetMessageFlags(ctx context.Context, in *SetFlagsRequest, opts ...grpc.CallOption) (*Empty, error)
 	SendMessage(ctx context.Context, in *SendMessageRequest, opts ...grpc.CallOption) (*SendMessageResponse, error)
 	TriggerSync(ctx context.Context, in *AccountRequest, opts ...grpc.CallOption) (*Empty, error)
+	// Calendars & Contacts (read-only, synced from CalDAV/CardDAV)
+	ListCalendars(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*CalendarList, error)
+	ListEvents(ctx context.Context, in *ListEventsRequest, opts ...grpc.CallOption) (*EventList, error)
+	ListContacts(ctx context.Context, in *ListContactsRequest, opts ...grpc.CallOption) (*ContactList, error)
 	// Real-time Push Events (New mail, sync status, flag updates)
 	SubscribeEvents(ctx context.Context, in *Empty, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DaemonEvent], error)
 }
@@ -151,6 +158,36 @@ func (c *mailandServiceClient) TriggerSync(ctx context.Context, in *AccountReque
 	return out, nil
 }
 
+func (c *mailandServiceClient) ListCalendars(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*CalendarList, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CalendarList)
+	err := c.cc.Invoke(ctx, MailandService_ListCalendars_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *mailandServiceClient) ListEvents(ctx context.Context, in *ListEventsRequest, opts ...grpc.CallOption) (*EventList, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EventList)
+	err := c.cc.Invoke(ctx, MailandService_ListEvents_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *mailandServiceClient) ListContacts(ctx context.Context, in *ListContactsRequest, opts ...grpc.CallOption) (*ContactList, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ContactList)
+	err := c.cc.Invoke(ctx, MailandService_ListContacts_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *mailandServiceClient) SubscribeEvents(ctx context.Context, in *Empty, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DaemonEvent], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &MailandService_ServiceDesc.Streams[0], MailandService_SubscribeEvents_FullMethodName, cOpts...)
@@ -185,6 +222,10 @@ type MailandServiceServer interface {
 	SetMessageFlags(context.Context, *SetFlagsRequest) (*Empty, error)
 	SendMessage(context.Context, *SendMessageRequest) (*SendMessageResponse, error)
 	TriggerSync(context.Context, *AccountRequest) (*Empty, error)
+	// Calendars & Contacts (read-only, synced from CalDAV/CardDAV)
+	ListCalendars(context.Context, *Empty) (*CalendarList, error)
+	ListEvents(context.Context, *ListEventsRequest) (*EventList, error)
+	ListContacts(context.Context, *ListContactsRequest) (*ContactList, error)
 	// Real-time Push Events (New mail, sync status, flag updates)
 	SubscribeEvents(*Empty, grpc.ServerStreamingServer[DaemonEvent]) error
 	mustEmbedUnimplementedMailandServiceServer()
@@ -223,6 +264,15 @@ func (UnimplementedMailandServiceServer) SendMessage(context.Context, *SendMessa
 }
 func (UnimplementedMailandServiceServer) TriggerSync(context.Context, *AccountRequest) (*Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method TriggerSync not implemented")
+}
+func (UnimplementedMailandServiceServer) ListCalendars(context.Context, *Empty) (*CalendarList, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListCalendars not implemented")
+}
+func (UnimplementedMailandServiceServer) ListEvents(context.Context, *ListEventsRequest) (*EventList, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListEvents not implemented")
+}
+func (UnimplementedMailandServiceServer) ListContacts(context.Context, *ListContactsRequest) (*ContactList, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListContacts not implemented")
 }
 func (UnimplementedMailandServiceServer) SubscribeEvents(*Empty, grpc.ServerStreamingServer[DaemonEvent]) error {
 	return status.Error(codes.Unimplemented, "method SubscribeEvents not implemented")
@@ -410,6 +460,60 @@ func _MailandService_TriggerSync_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _MailandService_ListCalendars_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MailandServiceServer).ListCalendars(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MailandService_ListCalendars_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MailandServiceServer).ListCalendars(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _MailandService_ListEvents_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListEventsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MailandServiceServer).ListEvents(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MailandService_ListEvents_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MailandServiceServer).ListEvents(ctx, req.(*ListEventsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _MailandService_ListContacts_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListContactsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MailandServiceServer).ListContacts(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MailandService_ListContacts_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MailandServiceServer).ListContacts(ctx, req.(*ListContactsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _MailandService_SubscribeEvents_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(Empty)
 	if err := stream.RecvMsg(m); err != nil {
@@ -463,6 +567,18 @@ var MailandService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "TriggerSync",
 			Handler:    _MailandService_TriggerSync_Handler,
+		},
+		{
+			MethodName: "ListCalendars",
+			Handler:    _MailandService_ListCalendars_Handler,
+		},
+		{
+			MethodName: "ListEvents",
+			Handler:    _MailandService_ListEvents_Handler,
+		},
+		{
+			MethodName: "ListContacts",
+			Handler:    _MailandService_ListContacts_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

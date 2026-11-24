@@ -8,12 +8,15 @@ Rectangle {
     id: root
 
     required property FolderModel folders
+    property CalendarModel calendar
     property string accountId
     property string folderId
+    property string view: "mail" // "mail" | "calendar" | "contacts"
     property alias folderList: list
 
     signal accountSelected(string accountId)
     signal folderSelected(string folderId)
+    signal viewSelected(string view)
 
     color: Theme.surface
 
@@ -34,7 +37,7 @@ Rectangle {
             text: (Rpc.syncing ? "⟳  Receiving…" : "⟳  Send/Receive")
             ToolTip.visible: hovered
             ToolTip.delay: 400
-            ToolTip.text: "Check all accounts for new mail (F5 / Ctrl+R: current account)"
+            ToolTip.text: "Check all accounts for new mail, events and contacts (Ctrl+R / F5)"
             onClicked: Rpc.triggerSync("")
             background: Rectangle {
                 radius: Theme.radius
@@ -53,7 +56,7 @@ Rectangle {
 
         // Account switcher (only with more than one account)
         Repeater {
-            model: Rpc.accounts.length > 1 ? Rpc.accounts : []
+            model: Rpc.accounts.length > 1 && root.view === "mail" ? Rpc.accounts : []
             delegate: Item {
                 id: acct
                 required property var modelData
@@ -90,15 +93,74 @@ Rectangle {
             }
         }
         Rectangle {
-            visible: Rpc.accounts.length > 1
+            visible: Rpc.accounts.length > 1 && root.view === "mail"
             Layout.fillWidth: true
             Layout.preferredHeight: 1
             color: Theme.border
         }
 
+        // Calendar list (calendar view): click to show/hide
+        ListView {
+            id: calList
+            visible: root.view === "calendar"
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            clip: true
+            model: root.calendar ? root.calendar.calendars : []
+            boundsBehavior: Flickable.StopAtBounds
+            delegate: Item {
+                id: calItem
+                required property var modelData
+                width: ListView.view.width
+                height: 32
+                Rectangle {
+                    anchors.fill: parent
+                    radius: Theme.radius
+                    color: calHover.hovered ? Theme.surfaceAlt : "transparent"
+                }
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: Theme.s3
+                    anchors.rightMargin: Theme.s3
+                    spacing: Theme.s2
+                    Rectangle {
+                        Layout.preferredWidth: 14; Layout.preferredHeight: 14; radius: 3
+                        color: calItem.modelData.visible ? calItem.modelData.color : "transparent"
+                        border.color: calItem.modelData.color
+                        border.width: 2
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: calItem.modelData.name
+                        color: calItem.modelData.visible ? Theme.text : Theme.textFaint
+                        font.pixelSize: Theme.fontBody
+                        elide: Text.ElideRight
+                    }
+                    Text {
+                        visible: Rpc.accounts.length > 1
+                        Layout.maximumWidth: 80
+                        text: calItem.modelData.accountName
+                        color: Theme.textFaint
+                        font.pixelSize: 11
+                        elide: Text.ElideRight
+                    }
+                }
+                HoverHandler { id: calHover }
+                TapHandler { onTapped: root.calendar.toggleCalendar(calItem.modelData.id) }
+            }
+        }
+
+        // Contacts view: nothing to pick here
+        Item {
+            visible: root.view === "contacts"
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+        }
+
         // Folder list
         ListView {
             id: list
+            visible: root.view === "mail"
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
@@ -161,27 +223,30 @@ Rectangle {
             spacing: Theme.s1
             Repeater {
                 model: [
-                    { name: "Mail", icon: "mail", available: true },
-                    { name: "Calendar", icon: "calendar", available: false },
-                    { name: "Contacts", icon: "contacts", available: false }
+                    { name: "Mail", key: "mail", shortcut: "Ctrl+1" },
+                    { name: "Calendar", key: "calendar", shortcut: "Ctrl+2" },
+                    { name: "Contacts", key: "contacts", shortcut: "Ctrl+3" }
                 ]
                 delegate: ToolButton {
                     id: view
                     required property var modelData
+                    readonly property bool current: root.view === view.modelData.key
                     Layout.fillWidth: true
                     text: view.modelData.name
                     hoverEnabled: true
+                    focusPolicy: Qt.NoFocus
                     implicitHeight: 32
-                    ToolTip.visible: hovered && !view.modelData.available
-                    ToolTip.text: "Milestone 5"
-                    ToolTip.delay: 300
+                    onClicked: root.viewSelected(view.modelData.key)
+                    ToolTip.visible: hovered
+                    ToolTip.text: view.modelData.name + " (" + view.modelData.shortcut + ")"
+                    ToolTip.delay: 500
                     background: Rectangle {
                         radius: Theme.radius
-                        color: view.modelData.available ? Theme.selection : "transparent"
+                        color: view.current ? Theme.selection : view.hovered ? Theme.surfaceAlt : "transparent"
                     }
                     contentItem: Label {
                         text: view.text
-                        color: view.modelData.available ? Theme.text : Theme.textFaint
+                        color: view.current ? Theme.text : Theme.textMuted
                         font.pixelSize: Theme.fontSmall
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter

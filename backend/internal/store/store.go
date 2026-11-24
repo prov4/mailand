@@ -29,9 +29,12 @@ import (
 //go:embed schema.sql
 var schemaV1 string
 
+//go:embed schema_v2.sql
+var schemaV2 string
+
 // migrations[i] upgrades the database from user_version i to i+1.
 // Append new entries for later milestones; never edit old ones.
-var migrations = []string{schemaV1}
+var migrations = []string{schemaV1, schemaV2}
 
 // ErrNotFound is returned by Get* methods when the row does not exist.
 var ErrNotFound = errors.New("store: not found")

@@ -161,7 +161,13 @@ func run(ctx context.Context, force bool, now time.Time, out io.Writer) error {
 		counts[m.account]++
 	}
 
-	fmt.Fprintf(out, "Seeded %d accounts, %d folders, %d messages\n", len(accounts), nfolders, len(msgs))
+	ncal, nev, ncon, err := seedPIM(ctx, st, now)
+	if err != nil {
+		return fmt.Errorf("seed calendars/contacts: %w", err)
+	}
+
+	fmt.Fprintf(out, "Seeded %d accounts, %d folders, %d messages, %d calendars (%d events), %d contacts\n",
+		len(accounts), nfolders, len(msgs), ncal, nev, ncon)
 	for _, a := range accounts {
 		fs, err := st.ListFolders(ctx, a.acc.ID)
 		if err != nil {

@@ -80,6 +80,7 @@ func TestErrors(t *testing.T) {
 		{"unknown key", acct(gm + "bogus=1\n"), "unknown config keys"},
 		{"secret key", acct(gm + "password=\"hunter2\"\n"), "keyring"},
 		{"token key", acct(gm + "refresh_token=\"x\"\n"), "keyring"},
+		{"bad caldav", acct(gm + "caldav_url=\"dav.example.com\"\n"), "caldav_url"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -111,5 +112,44 @@ func TestPaths(t *testing.T) {
 	t.Setenv("MAILAND_CONFIG", "/x.toml")
 	if ConfigPath() != "/x.toml" {
 		t.Error(ConfigPath())
+	}
+}
+
+func TestDAVURLs(t *testing.T) {
+	cfg, err := Load(write(t, google+`
+[[account]]
+id = "g"
+email = "me+x@gmail.com"
+provider = "gmail"
+
+[[account]]
+id = "g2"
+email = "b@gmail.com"
+provider = "gmail"
+caldav_url = "off"
+carddav_url = "https://dav.example.com/card/"
+
+[[account]]
+id = "w"
+email = "w@example.com"
+provider = "imap"
+imap_host = "h"
+smtp_host = "h"
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, g2, w := cfg.Accounts[0], cfg.Accounts[1], cfg.Accounts[2]
+	if got := g.CalendarURL(); got != "https://apidata.googleusercontent.com/caldav/v2/me+x@gmail.com/user" {
+		t.Errorf("gmail caldav: %s", got)
+	}
+	if got := g.ContactsURL(); got != "https://www.googleapis.com/carddav/v1/principals/me+x@gmail.com/lists/default/" {
+		t.Errorf("gmail carddav: %s", got)
+	}
+	if g2.CalendarURL() != "" || g2.ContactsURL() != "https://dav.example.com/card/" {
+		t.Errorf("off/override: %q %q", g2.CalendarURL(), g2.ContactsURL())
+	}
+	if w.CalendarURL() != "" || w.ContactsURL() != "" {
+		t.Errorf("imap without DAV: %q %q", w.CalendarURL(), w.ContactsURL())
 	}
 }

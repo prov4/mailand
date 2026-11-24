@@ -199,6 +199,14 @@ void Composer::initNew(const QString &accountId)
     emit ready();
 }
 
+void Composer::initNewTo(const QString &accountId, const QString &to)
+{
+    reset(QStringLiteral("new"), accountId);
+    setTo(to);
+    snapshot();
+    emit ready();
+}
+
 void Composer::initReply(const QString &messageId, bool replyAll)
 {
     reset(replyAll ? QStringLiteral("replyAll") : QStringLiteral("reply"), m_accountId);

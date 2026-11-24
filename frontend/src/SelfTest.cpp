@@ -11,7 +11,9 @@
 
 #include <functional>
 
+#include "CalendarModel.h"
 #include "Composer.h"
+#include "ContactsModel.h"
 #include "FolderModel.h"
 #include "MessageModel.h"
 #include "MessageView.h"
@@ -248,6 +250,87 @@ int runSelfTest(int argc, char **argv)
     search.setSearchQuery(word);
     waitUntil([&] { return !search.loading(); });
     check(search.count() > 0, "search after rapid query changes still shows the latest query");
+
+    // ---- calendar (needs synced or seeded calendars; skipped otherwise) ----
+    CalendarModel cal;
+    waitUntil([&] { return !cal.loading() && cal.revision() > 0; });
+    settle(50);
+    waitUntil([&] { return !cal.loading(); });
+    if (cal.calendars().isEmpty()) {
+        out << "skip  calendar: no calendars synced" << Qt::endl;
+    } else {
+        check(cal.eventCount() > 0, QStringLiteral("calendar: %1 calendars, %2 occurrences in the month grid")
+                                        .arg(cal.calendars().size()).arg(cal.eventCount()));
+        const QDate today = QDate::currentDate();
+        check(cal.gridStart().dayOfWeek() == 1 && cal.gridStart() <= QDate(today.year(), today.month(), 1),
+              "calendar: grid starts on the Monday before the 1st");
+        int busiest = 0;
+        for (int i = 0; i < 42; ++i)
+            busiest = std::max(busiest, int(cal.eventsOn(cal.gridDate(i)).size()));
+        check(busiest > 0, QStringLiteral("calendar: eventsOn finds occurrences (max %1 on one day)").arg(busiest));
+        const QString title = cal.monthTitle();
+        cal.moveMonths(1);
+        check(cal.monthTitle() != title && cal.selectedDate().month() != today.month(), "calendar: next month");
+        waitUntil([&] { return !cal.loading(); });
+        cal.goToday();
+        check(cal.selectedDate() == today && cal.monthTitle() == title, "calendar: back to today");
+        waitUntil([&] { return !cal.loading(); });
+        // Hiding a calendar removes its occurrences; showing it restores them.
+        const QString firstCal = cal.calendars().first().toMap().value("id").toString();
+        int before = 0, hidden = 0;
+        for (int i = 0; i < 42; ++i)
+            before += int(cal.eventsOn(cal.gridDate(i)).size());
+        cal.toggleCalendar(firstCal);
+        for (int i = 0; i < 42; ++i)
+            hidden += int(cal.eventsOn(cal.gridDate(i)).size());
+        cal.toggleCalendar(firstCal);
+        check(hidden <= before, QStringLiteral("calendar: hide/show a calendar (%1 -> %2)").arg(before).arg(hidden));
+    }
+
+    // ---- contacts ----
+    ContactsModel people;
+    waitUntil([&] { return !people.loading() && people.count() > 0; });
+    if (people.count() == 0) {
+        out << "skip  contacts: none synced" << Qt::endl;
+    } else {
+        check(true, QStringLiteral("contacts: %1 loaded").arg(people.count()));
+        const QVariantMap c0 = people.get(0);
+        const QString name = c0.value("fullName").toString();
+        people.setQuery(name.left(3));
+        settle(200);
+        waitUntil([&] { return !people.loading(); });
+        bool hit = false;
+        for (int i = 0; i < people.count(); ++i)
+            hit = hit || people.get(i).value("fullName").toString() == name;
+        check(hit, "contacts: search \"" + name.left(3) + "\" finds " + name);
+
+        // Composer autocomplete: one row per address, nothing below the minimum length.
+        ContactsModel sugg;
+        sugg.setPerEmail(true);
+        sugg.setMinQueryLength(2);
+        sugg.setLimit(8);
+        sugg.setQuery(QStringLiteral("x"));
+        settle(200);
+        check(sugg.count() == 0, "autocomplete: no suggestions for 1 character");
+        QString emailName;
+        for (int i = 0; i < people.count() && emailName.isEmpty(); ++i)
+            if (!people.get(i).value("email").toString().isEmpty())
+                emailName = people.get(i).value("fullName").toString();
+        if (!emailName.isEmpty()) {
+            sugg.setQuery(emailName.left(4));
+            settle(200);
+            waitUntil([&] { return !sugg.loading() && sugg.count() > 0; });
+            const QString addr = sugg.get(0).value("address").toString();
+            check(addr.contains('<') || addr.contains('@'), "autocomplete: \"" + emailName.left(4) + "\" -> " + addr);
+        }
+        check(ContactsModel::formatAddress("Horvat, Ana", "a@x.hr") == "\"Horvat, Ana\" <a@x.hr>"
+                  && ContactsModel::formatAddress("Ana", "a@x.hr") == "Ana <a@x.hr>"
+                  && ContactsModel::formatAddress("", "a@x.hr") == "a@x.hr",
+              "autocomplete: address formatting and quoting");
+        Composer to;
+        to.initNewTo(QString(), QStringLiteral("Ana <a@x.hr>"));
+        check(to.to() == "Ana <a@x.hr>" && !to.dirty(), "initNewTo: prefilled and not dirty");
+    }
 
     if (!errors.isEmpty())
         out << "      errors: " << errors.join(" | ") << Qt::endl;

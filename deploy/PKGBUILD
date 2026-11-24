@@ -5,7 +5,7 @@
 # build() reads the checkout at $startdir/.. directly, so run `makepkg` from
 # this directory (or `make package` from the repo root).
 pkgname=mailand-git
-pkgver=0.1.0.r3.ga922523
+pkgver=0.2.0.r5.gd94dda1
 pkgrel=1
 pkgdesc='Keyboard-driven mail client for Hyprland: Go daemon (mailand-daemon) + Qt 6 UI (mailand-ui)'
 arch=('x86_64')
@@ -27,8 +27,8 @@ _root="$startdir/.."
 
 pkgver() {
   cd "$_root"
-  # 0.1.0.r<commit count>.<short hash>; falls back to the static version.
-  printf '0.1.0.r%s.g%s' "$(git rev-list --count HEAD 2>/dev/null || echo 0)" \
+  # <VERSION>.r<commit count>.g<short hash>; VERSION is the repo's single version source.
+  printf '%s.r%s.g%s' "$(cat VERSION)" "$(git rev-list --count HEAD 2>/dev/null || echo 0)" \
     "$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 }
 
@@ -39,7 +39,7 @@ build() {
   # CGO_ENABLED=0 gives a static-ish PIE binary with no libc/sqlite linkage.
   export CGO_ENABLED=0
   export GOFLAGS="-trimpath -buildmode=pie -mod=readonly -modcacherw"
-  go -C backend build -ldflags "-s -w" \
+  go -C backend build -ldflags "-s -w -X main.version=$(cat VERSION)" \
     -o "$srcdir/mailand-daemon" ./cmd/mailand-daemon
 
   # Frontend. protoc/grpc_cpp_plugin codegen runs inside CMake.

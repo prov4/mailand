@@ -10,22 +10,40 @@ Popup {
     anchors.centerIn: Overlay.overlay
     padding: Theme.s5
 
-    readonly property var bindings: [
-        { keys: "j / k", what: "Next / previous message (opens it)" },
-        { keys: "Enter / l", what: "Focus reader pane" },
-        { keys: "h / Esc", what: "Back to message list" },
-        { keys: "/", what: "Search" },
-        { keys: "g g / G", what: "First / last message" },
-        { keys: "J / K", what: "Next / previous folder" },
-        { keys: "c", what: "Compose" },
-        { keys: "r / R", what: "Reply / reply all" },
-        { keys: "f", what: "Forward" },
-        { keys: "Ctrl+Enter", what: "Send (in composer)" },
-        { keys: "m", what: "Toggle read / unread" },
-        { keys: "s", what: "Toggle star" },
-        { keys: "Ctrl+R / F5", what: "Sync current account" },
-        { keys: "?", what: "This help" },
-        { keys: "Ctrl+Q", what: "Quit" }
+    readonly property var groups: [
+        { title: "Everywhere", rows: [
+            { keys: "Ctrl+1 / 2 / 3", what: "Mail / Calendar / Contacts" },
+            { keys: "c", what: "Compose" },
+            { keys: "Ctrl+R / F5", what: "Send/Receive (mail, calendars, contacts)" },
+            { keys: "?", what: "This help" },
+            { keys: "Ctrl+Q", what: "Quit" }
+        ] },
+        { title: "Mail", rows: [
+            { keys: "j / k", what: "Next / previous message" },
+            { keys: "Enter / l", what: "Focus reader pane" },
+            { keys: "h / Esc", what: "Back to message list" },
+            { keys: "/", what: "Search" },
+            { keys: "g g / G", what: "First / last message" },
+            { keys: "J / K", what: "Next / previous folder" },
+            { keys: "r / R / f", what: "Reply / reply all / forward" },
+            { keys: "m / s", what: "Toggle read / star" }
+        ] },
+        { title: "Composer", rows: [
+            { keys: "Ctrl+Enter", what: "Send" },
+            { keys: "↑ ↓ Enter", what: "Pick an address suggestion" },
+            { keys: "Esc", what: "Close" }
+        ] },
+        { title: "Calendar", rows: [
+            { keys: "h / l", what: "Previous / next day" },
+            { keys: "k / j", what: "Previous / next week" },
+            { keys: "p / n", what: "Previous / next month" },
+            { keys: "t", what: "Today" }
+        ] },
+        { title: "Contacts", rows: [
+            { keys: "j / k", what: "Next / previous contact" },
+            { keys: "/", what: "Search" },
+            { keys: "c / Enter", what: "Write to contact" }
+        ] }
     ]
 
     background: Rectangle {
@@ -37,38 +55,61 @@ Popup {
 
     contentItem: ColumnLayout {
         spacing: Theme.s2
-        Label {
-            text: "Keyboard shortcuts"
-            color: Theme.text
-            font.pixelSize: Theme.fontTitle
-            font.bold: true
+        RowLayout {
             Layout.bottomMargin: Theme.s2
-        }
-        Repeater {
-            model: root.bindings
-            delegate: RowLayout {
-                id: row
-                required property var modelData
-                spacing: Theme.s4
-                Label {
-                    text: row.modelData.keys
-                    color: Theme.accent
-                    font.family: Theme.monoFamily
-                    font.pixelSize: Theme.fontBody
-                    Layout.preferredWidth: 110
-                }
-                Label {
-                    text: row.modelData.what
-                    color: Theme.text
-                    font.pixelSize: Theme.fontBody
-                }
+            Label {
+                text: "Keyboard shortcuts"
+                color: Theme.text
+                font.pixelSize: Theme.fontTitle
+                font.bold: true
+                Layout.fillWidth: true
+            }
+            Label {
+                text: "mailand " + Qt.application.version
+                color: Theme.textFaint
+                font.pixelSize: Theme.fontSmall
             }
         }
-        Label {
-            text: "In the reader pane, j / k still move between messages."
-            color: Theme.textFaint
-            font.pixelSize: Theme.fontSmall
-            Layout.topMargin: Theme.s2
+        GridLayout {
+            columns: 2
+            columnSpacing: Theme.s5 * 2
+            rowSpacing: Theme.s3
+            Repeater {
+                model: root.groups
+                delegate: ColumnLayout {
+                    id: group
+                    required property var modelData
+                    Layout.alignment: Qt.AlignTop
+                    spacing: 4
+                    Label {
+                        text: group.modelData.title
+                        color: Theme.textMuted
+                        font.pixelSize: Theme.fontSmall
+                        font.bold: true
+                        Layout.bottomMargin: 2
+                    }
+                    Repeater {
+                        model: group.modelData.rows
+                        delegate: RowLayout {
+                            id: row
+                            required property var modelData
+                            spacing: Theme.s3
+                            Label {
+                                text: row.modelData.keys
+                                color: Theme.accent
+                                font.family: Theme.monoFamily
+                                font.pixelSize: Theme.fontSmall + 1
+                                Layout.preferredWidth: 120
+                            }
+                            Label {
+                                text: row.modelData.what
+                                color: Theme.text
+                                font.pixelSize: Theme.fontSmall + 1
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

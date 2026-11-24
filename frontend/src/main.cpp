@@ -48,6 +48,13 @@ static int runPrint(int argc, char **argv)
 
 int main(int argc, char *argv[])
 {
+    if (hasArg(argc, argv, "--version")) {
+        QTextStream(stdout) << "mailand-ui " << MAILAND_VERSION << Qt::endl;
+        return 0;
+    }
+    QCoreApplication::setOrganizationName(QStringLiteral("mailand"));
+    QCoreApplication::setApplicationName(QStringLiteral("mailand-ui"));
+    QCoreApplication::setApplicationVersion(QStringLiteral(MAILAND_VERSION));
     if (hasArg(argc, argv, "--print"))
         return runPrint(argc, argv);
     if (hasArg(argc, argv, "--selftest"))
@@ -111,6 +118,9 @@ Window {
             delay = 3000;
         const bool openFirst = hasArg(argc, argv, "--open-first");
         const QString composerMode = argValue(argc, argv, "--open-composer");
+        // --view calendar|contacts: switch view right after load (screenshots of those views).
+        if (const QString view = argValue(argc, argv, "--view"); !view.isEmpty() && !engine.rootObjects().isEmpty())
+            QMetaObject::invokeMethod(engine.rootObjects().first(), "showView", Q_ARG(QString, view));
         auto grab = [&engine, shot] {
             auto *win = engine.rootObjects().isEmpty() ? nullptr
                                                        : qobject_cast<QQuickWindow *>(engine.rootObjects().first());

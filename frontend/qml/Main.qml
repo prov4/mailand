@@ -18,9 +18,22 @@ ApplicationWindow {
     property string accountId
     property string folderId
     property bool pendingOpenFirst: false
+    property string view: "mail" // "mail" | "calendar" | "contacts"
 
-    // Plain-letter shortcuts are inactive while typing in search or while a modal is open.
-    readonly property bool keysEnabled: !listPane.searchActive && !composer.opened && !help.opened
+    // Plain-letter shortcuts are inactive while typing in a search field or while a modal is open.
+    readonly property bool keysEnabled: !listPane.searchActive && !contactsView.searchActive
+                                        && !composer.opened && !help.opened
+    readonly property bool mailKeys: keysEnabled && view === "mail"
+    readonly property bool calendarKeys: keysEnabled && view === "calendar"
+    readonly property bool contactKeys: keysEnabled && view === "contacts"
+
+    function showView(v: string) {
+        view = v
+        if (v === "mail")
+            listPane.focusList()
+        else
+            stack.forceActiveFocus()
+    }
 
     // Selects row 0 of the current list and opens it (used by screenshots).
     function openFirstMessage() {
@@ -32,6 +45,10 @@ ApplicationWindow {
     function debugOpenComposer(mode: string) {
         if (mode === "new")
             composer.openNew(accountId)
+        else if (mode.startsWith("type:")) {
+            composer.openNew(accountId)
+            composer.debugTypeTo(mode.substring(5))
+        }
         else if (mode === "forward")
             composer.openForward(accountId, messageView.messageId)
         else
@@ -89,6 +106,12 @@ ApplicationWindow {
     MessageView {
         id: messageView
     }
+    CalendarModel {
+        id: calendarModel
+    }
+    ContactsModel {
+        id: contactsModel
+    }
 
     Connections {
         target: Rpc
@@ -119,42 +142,42 @@ ApplicationWindow {
 
     // ---- Keyboard ---------------------------------------------------------------------------
     // j/k move between messages everywhere (also while the reader has focus).
-    Shortcut { sequence: "j"; enabled: root.keysEnabled; onActivated: listPane.next() }
-    Shortcut { sequence: "k"; enabled: root.keysEnabled; onActivated: listPane.previous() }
-    Shortcut { sequence: "g,g"; enabled: root.keysEnabled; onActivated: listPane.first() }
-    Shortcut { sequence: "Shift+G"; enabled: root.keysEnabled; onActivated: listPane.last() }
-    Shortcut { sequence: "Shift+J"; enabled: root.keysEnabled; onActivated: root.stepFolder(1) }
-    Shortcut { sequence: "Shift+K"; enabled: root.keysEnabled; onActivated: root.stepFolder(-1) }
+    Shortcut { sequence: "j"; enabled: root.mailKeys; onActivated: listPane.next() }
+    Shortcut { sequence: "k"; enabled: root.mailKeys; onActivated: listPane.previous() }
+    Shortcut { sequence: "g,g"; enabled: root.mailKeys; onActivated: listPane.first() }
+    Shortcut { sequence: "Shift+G"; enabled: root.mailKeys; onActivated: listPane.last() }
+    Shortcut { sequence: "Shift+J"; enabled: root.mailKeys; onActivated: root.stepFolder(1) }
+    Shortcut { sequence: "Shift+K"; enabled: root.mailKeys; onActivated: root.stepFolder(-1) }
     Shortcut {
         sequences: ["Return", "Enter", "l"]
-        enabled: root.keysEnabled && messageView.valid
+        enabled: root.mailKeys && messageView.valid
         onActivated: readerPane.focusContent()
     }
     Shortcut {
         sequences: ["h", "Escape"]
-        enabled: root.keysEnabled
+        enabled: root.mailKeys
         onActivated: listPane.focusList()
     }
-    Shortcut { sequence: "/"; enabled: root.keysEnabled; onActivated: listPane.focusSearch() }
-    Shortcut { sequence: "c"; enabled: root.keysEnabled; onActivated: composer.openNew(root.accountId) }
+    Shortcut { sequence: "/"; enabled: root.mailKeys; onActivated: listPane.focusSearch() }
+    Shortcut { sequence: "c"; enabled: root.keysEnabled && root.view !== "contacts"; onActivated: composer.openNew(root.accountId) }
     Shortcut {
         sequence: "r"
-        enabled: root.keysEnabled && messageView.valid
+        enabled: root.mailKeys && messageView.valid
         onActivated: composer.openReply(root.accountId, messageView.messageId, false)
     }
     Shortcut {
         sequence: "Shift+R"
-        enabled: root.keysEnabled && messageView.valid
+        enabled: root.mailKeys && messageView.valid
         onActivated: composer.openReply(root.accountId, messageView.messageId, true)
     }
     Shortcut {
         sequence: "f"
-        enabled: root.keysEnabled && messageView.valid
+        enabled: root.mailKeys && messageView.valid
         onActivated: composer.openForward(root.accountId, messageView.messageId)
     }
     Shortcut {
         sequence: "m"
-        enabled: root.keysEnabled
+        enabled: root.mailKeys
         onActivated: {
             const row = listPane.currentRow()
             if (row >= 0) {
@@ -165,7 +188,7 @@ ApplicationWindow {
     }
     Shortcut {
         sequence: "s"
-        enabled: root.keysEnabled
+        enabled: root.mailKeys
         onActivated: {
             const row = listPane.currentRow()
             if (row >= 0)
@@ -173,7 +196,25 @@ ApplicationWindow {
         }
     }
     Shortcut { sequences: ["?", "Shift+?"]; enabled: root.keysEnabled; onActivated: help.open() }
-    Shortcut { sequences: ["F5", "Ctrl+R"]; onActivated: Rpc.triggerSync(root.accountId) }
+    Shortcut { sequences: ["F5", "Ctrl+R"]; onActivated: Rpc.triggerSync("") } // = Send/Receive
+    Shortcut { sequence: "Ctrl+1"; enabled: !composer.opened; onActivated: root.showView("mail") }
+    Shortcut { sequence: "Ctrl+2"; enabled: !composer.opened; onActivated: root.showView("calendar") }
+    Shortcut { sequence: "Ctrl+3"; enabled: !composer.opened; onActivated: root.showView("contacts") }
+
+    // Calendar: h/l day, j/k week, n/p month, t today (arrows and PgUp/PgDn too).
+    Shortcut { sequences: ["h", "Left"]; enabled: root.calendarKeys; onActivated: calendarModel.moveDays(-1) }
+    Shortcut { sequences: ["l", "Right"]; enabled: root.calendarKeys; onActivated: calendarModel.moveDays(1) }
+    Shortcut { sequences: ["j", "Down"]; enabled: root.calendarKeys; onActivated: calendarModel.moveDays(7) }
+    Shortcut { sequences: ["k", "Up"]; enabled: root.calendarKeys; onActivated: calendarModel.moveDays(-7) }
+    Shortcut { sequences: ["n", "PgDown"]; enabled: root.calendarKeys; onActivated: calendarModel.moveMonths(1) }
+    Shortcut { sequences: ["p", "PgUp"]; enabled: root.calendarKeys; onActivated: calendarModel.moveMonths(-1) }
+    Shortcut { sequence: "t"; enabled: root.calendarKeys; onActivated: calendarModel.goToday() }
+
+    // Contacts: j/k move, / search, c or Enter writes to the selected contact.
+    Shortcut { sequences: ["j", "Down"]; enabled: root.contactKeys; onActivated: contactsView.next() }
+    Shortcut { sequences: ["k", "Up"]; enabled: root.contactKeys; onActivated: contactsView.previous() }
+    Shortcut { sequence: "/"; enabled: root.contactKeys; onActivated: contactsView.focusSearch() }
+    Shortcut { sequences: ["c", "Return", "Enter"]; enabled: root.contactKeys; onActivated: contactsView.composeToCurrent() }
     Shortcut { sequence: "Ctrl+Q"; onActivated: Qt.quit() }
 
     // ---- Layout -----------------------------------------------------------------------------
@@ -211,28 +252,56 @@ ApplicationWindow {
                 SplitView.minimumWidth: 160
                 SplitView.maximumWidth: 360
                 folders: folderModel
+                calendar: calendarModel
+                view: root.view
                 accountId: root.accountId
                 folderId: root.folderId
                 onAccountSelected: id => root.selectAccount(id)
                 onFolderSelected: id => root.selectFolder(id)
+                onViewSelected: v => root.showView(v)
             }
 
-            MessageListPane {
-                id: listPane
-                SplitView.preferredWidth: Theme.listWidth
-                SplitView.minimumWidth: 280
-                SplitView.maximumWidth: 640
-                messages: messageModel
-                accountId: root.accountId
-                focus: true
-                onMessageActivated: id => root.openMessage(id)
-            }
-
-            ReaderPane {
-                id: readerPane
+            StackLayout {
+                id: stack
                 SplitView.fillWidth: true
-                SplitView.minimumWidth: 320
-                message: messageView
+                currentIndex: root.view === "calendar" ? 1 : root.view === "contacts" ? 2 : 0
+
+                SplitView {
+                    orientation: Qt.Horizontal
+                    handle: Rectangle {
+                        implicitWidth: 1
+                        color: Theme.border
+                    }
+
+                    MessageListPane {
+                        id: listPane
+                        SplitView.preferredWidth: Theme.listWidth
+                        SplitView.minimumWidth: 280
+                        SplitView.maximumWidth: 640
+                        messages: messageModel
+                        accountId: root.accountId
+                        focus: true
+                        onMessageActivated: id => root.openMessage(id)
+                    }
+
+                    ReaderPane {
+                        id: readerPane
+                        SplitView.fillWidth: true
+                        SplitView.minimumWidth: 320
+                        message: messageView
+                    }
+                }
+
+                CalendarView {
+                    id: calendarView
+                    calendar: calendarModel
+                }
+
+                ContactsView {
+                    id: contactsView
+                    contacts: contactsModel
+                    onComposeTo: (accountId, address) => composer.openNewTo(accountId.length > 0 ? accountId : root.accountId, address)
+                }
             }
         }
 
@@ -279,7 +348,9 @@ ApplicationWindow {
                     elide: Text.ElideRight
                 }
                 Text {
-                    text: messageModel.totalCount > 0 ? messageModel.totalCount + " messages" : ""
+                    text: root.view === "calendar" ? (calendarModel.eventCount + " events this view")
+                        : root.view === "contacts" ? (contactsModel.count + " contacts")
+                        : messageModel.totalCount > 0 ? messageModel.totalCount + " messages" : ""
                     color: Theme.textFaint
                     font.pixelSize: 11
                 }

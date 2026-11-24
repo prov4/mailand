@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.24)
-project(mailand-ui VERSION 0.1.0 LANGUAGES CXX)
+# The repo-wide version lives in ../VERSION (also used by the Go build and PKGBUILD).
+file(STRINGS ${CMAKE_CURRENT_SOURCE_DIR}/../VERSION MAILAND_VERSION LIMIT_COUNT 1)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../VERSION)
+project(mailand-ui VERSION ${MAILAND_VERSION} LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -58,6 +61,8 @@ qt_add_qml_module(mailand-ui
         src/MessageModel.h src/MessageModel.cpp
         src/MessageView.h src/MessageView.cpp
         src/Composer.h src/Composer.cpp
+        src/CalendarModel.h src/CalendarModel.cpp
+        src/ContactsModel.h src/ContactsModel.cpp
         src/MailWeb.h src/MailWeb.cpp
         src/Format.h src/Format.cpp
         src/SelfTest.h src/SelfTest.cpp
@@ -66,6 +71,7 @@ qt_add_qml_module(mailand-ui
 # The generated QML type registration includes headers by bare name.
 target_include_directories(mailand-ui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_options(mailand-ui PRIVATE -Wall -Wextra)
+target_compile_definitions(mailand-ui PRIVATE MAILAND_VERSION="${MAILAND_VERSION}")
 
 target_link_libraries(mailand-ui PRIVATE
     Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2

@@ -83,6 +83,11 @@ public:
     void sendMessage(mailand::v1::SendMessageRequest req, QObject *ctx,
                      Done<mailand::v1::SendMessageResponse> done);
 
+    void listCalendars(QObject *ctx, Done<mailand::v1::CalendarList> done);
+    void listEvents(qint64 startUnix, qint64 endUnix, QObject *ctx, Done<mailand::v1::EventList> done);
+    void listContacts(const QString &query, quint32 limit, bool emailOnly, QObject *ctx,
+                      Done<mailand::v1::ContactList> done);
+
     // Surface a user-visible failure (emits errorOccurred).
     void reportError(const QString &message);
 

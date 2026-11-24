@@ -18,6 +18,11 @@ Popup {
         c.initNew(accountId)
         open()
     }
+    function openNewTo(accountId: string, to: string) {
+        prepare()
+        c.initNewTo(accountId, to)
+        open()
+    }
     function openReply(accountId: string, messageId: string, replyAll: bool) {
         prepare()
         c.accountId = accountId
@@ -29,6 +34,13 @@ Popup {
         c.accountId = accountId
         c.initForward(messageId)
         open()
+    }
+    // Debug (--open-composer type:TEXT): type into To as a user would.
+    function debugTypeTo(text: string) {
+        toField.forceActiveFocus()
+        toField.text = text
+        toField.cursorPosition = text.length
+        toField.textEdited()
     }
     function prepare() {
         showCcBcc = false
@@ -99,6 +111,24 @@ Popup {
         font.pixelSize: Theme.fontSmall
         verticalAlignment: Text.AlignVCenter
     }
+    component AddrField: AddressField {
+        Layout.fillWidth: true
+        color: Theme.text
+        selectionColor: Theme.selection
+        selectedTextColor: Theme.text
+        placeholderTextColor: Theme.textFaint
+        font.pixelSize: Theme.fontBody
+        leftPadding: Theme.s2
+        rightPadding: Theme.s2
+        topPadding: Theme.s2
+        bottomPadding: Theme.s2
+        enabled: !root.busy
+        background: Rectangle {
+            radius: Theme.radius
+            color: Theme.bg
+            border.color: parent.activeFocus ? Theme.accent : Theme.border
+        }
+    }
     component Field: TextField {
         Layout.fillWidth: true
         color: Theme.text
@@ -153,7 +183,7 @@ Popup {
         RowLayout {
             Layout.fillWidth: true
             FieldLabel { text: "To" }
-            Field {
+            AddrField {
                 id: toField
                 text: c.to
                 placeholderText: "name@example.com, …"
@@ -182,7 +212,7 @@ Popup {
             Layout.fillWidth: true
             visible: root.showCcBcc
             FieldLabel { text: "Cc" }
-            Field {
+            AddrField {
                 id: ccField
                 text: c.cc
                 onTextEdited: c.cc = text
@@ -194,7 +224,7 @@ Popup {
             Layout.fillWidth: true
             visible: root.showCcBcc
             FieldLabel { text: "Bcc" }
-            Field {
+            AddrField {
                 id: bccField
                 text: c.bcc
                 onTextEdited: c.bcc = text

@@ -32,6 +32,18 @@ func TestSeed(t *testing.T) {
 	if len(accs) != 2 {
 		t.Fatalf("accounts = %d", len(accs))
 	}
+	cals, _ := st.ListCalendars(ctx, "")
+	if len(cals) != 3 {
+		t.Fatalf("calendars = %d", len(cals))
+	}
+	weekStart := now.AddDate(0, 0, -7).Unix()
+	objs, err := st.CalendarObjectsInRange(ctx, nil, weekStart, now.AddDate(0, 0, 14).Unix())
+	if err != nil || len(objs) < 8 {
+		t.Fatalf("events around now: %d %v", len(objs), err)
+	}
+	if cs, _ := st.SearchContacts(ctx, "", false, 0); len(cs) != 14 {
+		t.Fatalf("contacts = %d", len(cs))
+	}
 	var total, unread, today, yesterday, big, inline int
 	midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	for _, a := range accs {

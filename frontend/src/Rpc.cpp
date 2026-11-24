@@ -254,6 +254,38 @@ void Rpc::sendMessage(mailand::v1::SendMessageRequest req, QObject *ctx,
         ctx, std::move(done), 90000);
 }
 
+void Rpc::listCalendars(QObject *ctx, Done<mailand::v1::CalendarList> done)
+{
+    call<mailand::v1::CalendarList>(
+        mailand::v1::Empty(),
+        [](auto *a, auto *cx, const auto *rq, auto *rs, auto cb) { a->ListCalendars(cx, rq, rs, std::move(cb)); },
+        ctx, std::move(done));
+}
+
+void Rpc::listEvents(qint64 startUnix, qint64 endUnix, QObject *ctx, Done<mailand::v1::EventList> done)
+{
+    mailand::v1::ListEventsRequest req;
+    req.set_start_unix(startUnix);
+    req.set_end_unix(endUnix);
+    call<mailand::v1::EventList>(
+        std::move(req),
+        [](auto *a, auto *cx, const auto *rq, auto *rs, auto cb) { a->ListEvents(cx, rq, rs, std::move(cb)); },
+        ctx, std::move(done), 20000);
+}
+
+void Rpc::listContacts(const QString &query, quint32 limit, bool emailOnly, QObject *ctx,
+                       Done<mailand::v1::ContactList> done)
+{
+    mailand::v1::ListContactsRequest req;
+    req.set_query(query.toStdString());
+    req.set_limit(limit);
+    req.set_email_only(emailOnly);
+    call<mailand::v1::ContactList>(
+        std::move(req),
+        [](auto *a, auto *cx, const auto *rq, auto *rs, auto cb) { a->ListContacts(cx, rq, rs, std::move(cb)); },
+        ctx, std::move(done));
+}
+
 void Rpc::setConnected(bool connected, const QString &error)
 {
     if (m_connected != connected) {

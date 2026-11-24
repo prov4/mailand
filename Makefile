@@ -2,8 +2,10 @@ GO        ?= go
 TOOLS_BIN := $(CURDIR)/.tools/bin
 PROTOC    ?= protoc
 BIN_DIR   := $(CURDIR)/build/bin
+VERSION   := $(shell cat $(CURDIR)/VERSION)
+LDVERSION := -X main.version=$(VERSION)
 
-.PHONY: all tools proto backend frontend test run-daemon clean release install uninstall package enable-daemon
+.PHONY: all tools proto backend frontend test run-daemon clean release install uninstall package enable-daemon version
 
 all: backend frontend
 
@@ -18,7 +20,7 @@ proto: tools
 		proto/mailand.proto
 
 backend:
-	$(GO) -C backend build -o $(BIN_DIR)/mailand-daemon ./cmd/mailand-daemon
+	$(GO) -C backend build -ldflags "$(LDVERSION)" -o $(BIN_DIR)/mailand-daemon ./cmd/mailand-daemon
 	$(GO) -C backend build -o $(BIN_DIR)/mailand-seed ./cmd/mailand-seed
 
 frontend:
@@ -45,7 +47,7 @@ UNITDIR ?= $(PREFIX)/lib/systemd/user
 # mailand-seed is a dev tool and is not built or installed here.
 release:
 	CGO_ENABLED=0 $(GO) -C backend build -trimpath -buildmode=pie -mod=readonly \
-		-ldflags "-s -w" -o $(RELDIR)/mailand-daemon ./cmd/mailand-daemon
+		-ldflags "-s -w $(LDVERSION)" -o $(RELDIR)/mailand-daemon ./cmd/mailand-daemon
 	cmake -S frontend -B $(RELDIR)/frontend -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$(PREFIX)
 	cmake --build $(RELDIR)/frontend -j
 	cp $(RELDIR)/frontend/mailand-ui $(RELDIR)/mailand-ui
@@ -67,14 +69,19 @@ uninstall:
 		$(DESTDIR)$(PREFIX)/share/applications/mailand-ui.desktop \
 		$(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/mailand.svg
 
-# Builds mailand-git-*.pkg.tar.zst in deploy/ from the local tree; install it
-# yourself with `sudo pacman -U deploy/mailand-git-*.pkg.tar.zst`.
+# Builds mailand-git-<version>.pkg.tar.zst in deploy/ from the local tree; install it
+# yourself with `sudo pacman -U deploy/mailand-git-[0-9]*.pkg.tar.zst`. Older
+# packages are removed first so that glob matches exactly one file.
 # -C wipes deploy/src first: a stale CMake build dir there breaks the QML cache link.
 # If go comes from mise/asdf rather than pacman: `make package MAKEPKG_FLAGS=-d`.
 MAKEPKG_FLAGS ?=
 package:
+	rm -f deploy/mailand-git-*.pkg.tar.zst
 	cd deploy && makepkg -Cf $(MAKEPKG_FLAGS)
 
 # Run by YOU after `make install` or installing the package; never run by the build.
 enable-daemon:
 	systemctl --user daemon-reload && systemctl --user enable --now mailand-daemon
+
+version:
+	@echo $(VERSION)

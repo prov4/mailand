@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -49,6 +50,9 @@ type Account struct {
 	SMTPPort int    `toml:"smtp_port"`
 	SMTPTLS  string `toml:"smtp_tls"`
 
+	// CalDAV/CardDAV base URLs (a server root, principal or collection; the
+	// daemon discovers the collections). Empty: Google's endpoints for gmail
+	// accounts, nothing otherwise. "off" disables.
 	CalDAVURL  string `toml:"caldav_url"`
 	CardDAVURL string `toml:"carddav_url"`
 
@@ -178,6 +182,11 @@ func (c *Config) validate() error {
 		if err := a.applyServerDefaults(); err != nil {
 			return fmt.Errorf("%s: %w", where, err)
 		}
+		for k, v := range map[string]string{"caldav_url": a.CalDAVURL, "carddav_url": a.CardDAVURL} {
+			if v != "" && v != "off" && !strings.HasPrefix(v, "https://") && !strings.HasPrefix(v, "http://") {
+				return fmt.Errorf("%s: %s %q must be an http(s) URL or \"off\"", where, k, v)
+			}
+		}
 		a.PollInterval = DefaultPollInterval
 		if a.PollIntervalStr != "" {
 			d, err := time.ParseDuration(a.PollIntervalStr)
@@ -191,6 +200,38 @@ func (c *Config) validate() error {
 		return errors.New("an account uses oauth2_google but [google] client_id is not set")
 	}
 	return nil
+}
+
+// Google CalDAV/CardDAV endpoints (STARTUP.md 6E).
+const (
+	GoogleCalDAVBase  = "https://apidata.googleusercontent.com/caldav/v2/"
+	GoogleCardDAVBase = "https://www.googleapis.com/carddav/v1/principals/"
+)
+
+// CalendarURL is the CalDAV starting point for discovery, "" if disabled.
+func (a *Account) CalendarURL() string {
+	switch {
+	case a.CalDAVURL == "off":
+		return ""
+	case a.CalDAVURL != "":
+		return a.CalDAVURL
+	case a.Provider == ProviderGmail:
+		return GoogleCalDAVBase + url.PathEscape(a.Email) + "/user"
+	}
+	return ""
+}
+
+// ContactsURL is the CardDAV starting point for discovery, "" if disabled.
+func (a *Account) ContactsURL() string {
+	switch {
+	case a.CardDAVURL == "off":
+		return ""
+	case a.CardDAVURL != "":
+		return a.CardDAVURL
+	case a.Provider == ProviderGmail:
+		return GoogleCardDAVBase + url.PathEscape(a.Email) + "/lists/default/"
+	}
+	return ""
 }
 
 func (a *Account) applyServerDefaults() error {
@@ -255,6 +296,6 @@ provider = "gmail"            # "gmail" | "imap"
 # smtp_host = "smtp.example.com"
 # smtp_port = 587
 # smtp_tls = "starttls"
-# caldav_url = ""             # Milestone 5
-# carddav_url = ""
+# caldav_url = "https://dav.example.com/"   # calendars; gmail: automatic; "off" disables
+# carddav_url = "https://dav.example.com/"  # contacts;  gmail: automatic; "off" disables
 `
