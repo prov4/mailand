@@ -17,6 +17,7 @@ service MailandService {
   rpc GetAttachment(AttachmentRequest) returns (AttachmentData);
   rpc SearchMessages(SearchRequest) returns (MessageHeaderList);
   rpc SetMessageFlags(SetFlagsRequest) returns (Empty);
+  rpc ArchiveMessages(ArchiveRequest) returns (Empty);
   rpc SendMessage(SendMessageRequest) returns (SendMessageResponse);
   rpc TriggerSync(AccountRequest) returns (Empty); // mail, calendars and contacts
 
@@ -48,6 +49,7 @@ message Account {
   string id = 1;
   string name = 2;
   string email = 3;
+  string signature = 4;
 }
 
 message AccountList {
@@ -72,6 +74,7 @@ message ListMessagesRequest {
   string folder_id = 1;
   uint32 limit = 2;
   uint32 offset = 3;
+  bool unread_only = 4;
 }
 
 message MessageHeader {
@@ -87,6 +90,7 @@ message MessageHeader {
   bool has_attachments = 10;
   string snippet = 11;
   repeated string folder_ids = 12; // all folders/labels this message appears in
+  bool is_answered = 13;
 }
 
 message MessageHeaderList {
@@ -131,12 +135,17 @@ message SearchRequest {
   string query = 1;
   string account_id = 2; // Optional filter
   uint32 limit = 3;
+  bool unread_only = 4;
 }
 
 message SetFlagsRequest {
   repeated string message_ids = 1;
   optional bool is_read = 2;
   optional bool is_flagged = 3;
+}
+
+message ArchiveRequest {
+  repeated string message_ids = 1;
 }
 
 message SendAttachment {

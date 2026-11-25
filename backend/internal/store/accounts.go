@@ -15,13 +15,16 @@ type Account struct {
 	SMTPPort              int
 	AuthType              string // "password" | "oauth2_google"; defaults to "password"
 	CalDAVURL, CardDAVURL string
+	Signature             string
+	SignatureHTML         string
+	SignatureImage        string
 }
 
-const accountCols = `id, name, email, imap_host, imap_port, smtp_host, smtp_port, auth_type, COALESCE(caldav_url,''), COALESCE(carddav_url,'')`
+const accountCols = `id, name, email, imap_host, imap_port, smtp_host, smtp_port, auth_type, COALESCE(caldav_url,''), COALESCE(carddav_url,''), COALESCE(signature,''), COALESCE(signature_html,''), COALESCE(signature_image,'')`
 
 func scanAccount(sc interface{ Scan(...any) error }) (Account, error) {
 	var a Account
-	err := sc.Scan(&a.ID, &a.Name, &a.Email, &a.IMAPHost, &a.IMAPPort, &a.SMTPHost, &a.SMTPPort, &a.AuthType, &a.CalDAVURL, &a.CardDAVURL)
+	err := sc.Scan(&a.ID, &a.Name, &a.Email, &a.IMAPHost, &a.IMAPPort, &a.SMTPHost, &a.SMTPPort, &a.AuthType, &a.CalDAVURL, &a.CardDAVURL, &a.Signature, &a.SignatureHTML, &a.SignatureImage)
 	return a, err
 }
 
@@ -31,13 +34,14 @@ func (s *Store) UpsertAccount(ctx context.Context, a Account) error {
 		a.AuthType = "password"
 	}
 	_, err := s.db.ExecContext(ctx, `
-INSERT INTO accounts (id, name, email, imap_host, imap_port, smtp_host, smtp_port, auth_type, caldav_url, carddav_url) VALUES (?,?,?,?,?,?,?,?,?,?)
+INSERT INTO accounts (id, name, email, imap_host, imap_port, smtp_host, smtp_port, auth_type, caldav_url, carddav_url, signature, signature_html, signature_image) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
 ON CONFLICT(id) DO UPDATE SET name=excluded.name, email=excluded.email,
   imap_host=excluded.imap_host, imap_port=excluded.imap_port,
   smtp_host=excluded.smtp_host, smtp_port=excluded.smtp_port,
-  auth_type=excluded.auth_type, caldav_url=excluded.caldav_url, carddav_url=excluded.carddav_url`,
+  auth_type=excluded.auth_type, caldav_url=excluded.caldav_url, carddav_url=excluded.carddav_url,
+  signature=excluded.signature, signature_html=excluded.signature_html, signature_image=excluded.signature_image`,
 		a.ID, a.Name, a.Email, a.IMAPHost, a.IMAPPort, a.SMTPHost, a.SMTPPort, a.AuthType,
-		nullStr(a.CalDAVURL), nullStr(a.CardDAVURL))
+		nullStr(a.CalDAVURL), nullStr(a.CardDAVURL), a.Signature, a.SignatureHTML, a.SignatureImage)
 	return err
 }
 

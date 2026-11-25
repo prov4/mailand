@@ -286,8 +286,8 @@ func TestSearchFeatures(t *testing.T) {
 	if first("fak") != "Nova faktura" {
 		t.Fatal("prefix")
 	}
-	if first("invoice") != "Invoice March" {
-		t.Fatal("rank: subject should beat body-only (which is newer)")
+	if first("invoice") != "Other" {
+		t.Fatal("order: newest matching message should come first")
 	}
 	if first("invoice marc") != "Invoice March" {
 		t.Fatal("multi-term prefix")
@@ -320,7 +320,7 @@ func TestUnreadFlagsAndUIDs(t *testing.T) {
 	if unread() != 1 {
 		t.Fatal(unread())
 	}
-	must(t, s.UpdateFlags(ctx, f["All"], 3, true, true))
+	must(t, s.UpdateFlags(ctx, f["All"], 3, true, true, false))
 	if unread() != 0 {
 		t.Fatal("after read")
 	}

@@ -8,9 +8,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"html"
 	"mime"
+	"net/http"
 	"net/mail"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -35,12 +38,13 @@ const (
 	maxReferencesLen   = 800
 )
 
-// Request is a send request (mirrors pb.SendMessageRequest; plain text only).
+// Request is a send request (mirrors pb.SendMessageRequest).
 type Request struct {
 	AccountID   string
 	To, Cc, Bcc []string
 	Subject     string
 	TextBody    string
+	HTMLBody    string
 	InReplyTo   string // raw Message-ID fallback
 	ReplyToID   string // mailand message id; takes precedence over InReplyTo
 	ForwardOfID string // mailand message id whose attachments are attached
@@ -105,17 +109,27 @@ type Attachment struct {
 	Data     []byte
 }
 
+// InlineImage is an image embedded in an HTML body via Content-ID (cid:).
+type InlineImage struct {
+	ContentID string // without angle brackets
+	Filename  string
+	MIMEType  string
+	Data      []byte
+}
+
 // Input is a fully resolved message for Compose.
 type Input struct {
-	From        mail.Address
-	To, Cc      []*mail.Address // Bcc is deliberately absent: it never appears in headers
-	Subject     string
-	Body        string
-	Date        time.Time
-	MessageID   string   // without angle brackets; generated when empty
-	InReplyTo   string   // without angle brackets
-	References  []string // without angle brackets
-	Attachments []Attachment
+	From         mail.Address
+	To, Cc       []*mail.Address // Bcc is deliberately absent: it never appears in headers
+	Subject      string
+	Body         string
+	HTMLBody     string // optional; when non-empty, Compose emits multipart/alternative
+	Date         time.Time
+	MessageID    string   // without angle brackets; generated when empty
+	InReplyTo    string   // without angle brackets
+	References   []string // without angle brackets
+	InlineImages []InlineImage
+	Attachments  []Attachment
 }
 
 // NewMessageID returns a fresh Message-ID (without angle brackets) at domain.
@@ -184,7 +198,8 @@ func Compose(in Input) ([]byte, string, error) {
 	body := strings.ReplaceAll(strings.ReplaceAll(in.Body, "\r\n", "\n"), "\r", "\n")
 
 	var buf bytes.Buffer
-	if len(in.Attachments) == 0 {
+	hasHTML := in.HTMLBody != ""
+	if len(in.Attachments) == 0 && !hasHTML {
 		h.Set("Content-Type", "text/plain; charset=utf-8")
 		h.Set("Content-Transfer-Encoding", "quoted-printable")
 		w, err := message.CreateWriter(&buf, h.Header)
@@ -200,34 +215,56 @@ func Compose(in Input) ([]byte, string, error) {
 		return buf.Bytes(), id, nil
 	}
 
+	if len(in.Attachments) == 0 && hasHTML {
+		h.Set("Content-Type", "multipart/alternative")
+		aw, err := message.CreateWriter(&buf, h.Header)
+		if err != nil {
+			return nil, "", err
+		}
+		if err := writeAlternativeChildren(aw, body, in.HTMLBody, in.InlineImages); err != nil {
+			return nil, "", err
+		}
+		if err := aw.Close(); err != nil {
+			return nil, "", err
+		}
+		return buf.Bytes(), id, nil
+	}
+
 	h.Set("Content-Type", "multipart/mixed")
 	mw, err := message.CreateWriter(&buf, h.Header)
 	if err != nil {
 		return nil, "", err
 	}
-	var th message.Header
-	th.Set("Content-Type", "text/plain; charset=utf-8")
-	th.Set("Content-Transfer-Encoding", "quoted-printable")
-	pw, err := mw.CreatePart(th)
-	if err != nil {
-		return nil, "", err
-	}
-	if _, err := pw.Write([]byte(body)); err != nil {
-		return nil, "", err
-	}
-	if err := pw.Close(); err != nil {
-		return nil, "", err
+	if hasHTML {
+		var altH message.Header
+		altH.Set("Content-Type", "multipart/alternative")
+		aw, err := mw.CreatePart(altH)
+		if err != nil {
+			return nil, "", err
+		}
+		if err := writeAlternativeChildren(aw, body, in.HTMLBody, in.InlineImages); err != nil {
+			return nil, "", err
+		}
+		if err := aw.Close(); err != nil {
+			return nil, "", err
+		}
+	} else {
+		var th message.Header
+		th.Set("Content-Type", "text/plain; charset=utf-8")
+		th.Set("Content-Transfer-Encoding", "quoted-printable")
+		pw, err := mw.CreatePart(th)
+		if err != nil {
+			return nil, "", err
+		}
+		if _, err := pw.Write([]byte(body)); err != nil {
+			return nil, "", err
+		}
+		if err := pw.Close(); err != nil {
+			return nil, "", err
+		}
 	}
 	for _, a := range in.Attachments {
-		name := strings.Map(func(r rune) rune {
-			if r == '\r' || r == '\n' || r == 0 {
-				return '_'
-			}
-			return r
-		}, a.Filename)
-		if name == "" {
-			name = "attachment"
-		}
+		name := sanitizeHeaderName(a.Filename, "attachment")
 		typ := a.MIMEType
 		if typ == "" {
 			typ = "application/octet-stream"
@@ -251,6 +288,92 @@ func Compose(in Input) ([]byte, string, error) {
 		return nil, "", err
 	}
 	return buf.Bytes(), id, nil
+}
+
+func sanitizeHeaderName(name, fallback string) string {
+	name = strings.Map(func(r rune) rune {
+		if r == '\r' || r == '\n' || r == 0 {
+			return '_'
+		}
+		return r
+	}, name)
+	if name == "" {
+		return fallback
+	}
+	return name
+}
+
+func writeAlternativeChildren(aw *message.Writer, plain, htmlBody string, inline []InlineImage) error {
+	var th message.Header
+	th.Set("Content-Type", "text/plain; charset=utf-8")
+	th.Set("Content-Transfer-Encoding", "quoted-printable")
+	pw, err := aw.CreatePart(th)
+	if err != nil {
+		return err
+	}
+	if _, err := pw.Write([]byte(plain)); err != nil {
+		return err
+	}
+	if err := pw.Close(); err != nil {
+		return err
+	}
+
+	if len(inline) == 0 {
+		var hh message.Header
+		hh.Set("Content-Type", "text/html; charset=utf-8")
+		hh.Set("Content-Transfer-Encoding", "quoted-printable")
+		hw, err := aw.CreatePart(hh)
+		if err != nil {
+			return err
+		}
+		if _, err := hw.Write([]byte(htmlBody)); err != nil {
+			return err
+		}
+		return hw.Close()
+	}
+
+	var relH message.Header
+	relH.Set("Content-Type", "multipart/related")
+	rw, err := aw.CreatePart(relH)
+	if err != nil {
+		return err
+	}
+	var hh message.Header
+	hh.Set("Content-Type", "text/html; charset=utf-8")
+	hh.Set("Content-Transfer-Encoding", "quoted-printable")
+	hw, err := rw.CreatePart(hh)
+	if err != nil {
+		return err
+	}
+	if _, err := hw.Write([]byte(htmlBody)); err != nil {
+		return err
+	}
+	if err := hw.Close(); err != nil {
+		return err
+	}
+	for _, img := range inline {
+		name := sanitizeHeaderName(img.Filename, "image")
+		typ := img.MIMEType
+		if typ == "" {
+			typ = "application/octet-stream"
+		}
+		var ih message.Header
+		ih.SetContentType(typ, map[string]string{"name": name})
+		ih.SetContentDisposition("inline", map[string]string{"filename": name})
+		ih.Set("Content-ID", "<"+img.ContentID+">")
+		ih.Set("Content-Transfer-Encoding", "base64")
+		iw, err := rw.CreatePart(ih)
+		if err != nil {
+			return err
+		}
+		if _, err := iw.Write(img.Data); err != nil {
+			return err
+		}
+		if err := iw.Close(); err != nil {
+			return err
+		}
+	}
+	return rw.Close()
 }
 
 // fitReferences keeps the header under the line-length limit by dropping
@@ -351,6 +474,34 @@ func Build(ctx context.Context, st *store.Store, acct store.Account, req Request
 		}
 	}
 
+	if req.HTMLBody != "" {
+		in.HTMLBody = req.HTMLBody
+		if acct.SignatureImage != "" {
+			img, err := loadSignatureImage(acct.SignatureImage)
+			if err != nil {
+				return nil, err
+			}
+			in.InlineImages = append(in.InlineImages, img)
+			if !strings.Contains(in.HTMLBody, "cid:"+sigImageCID) {
+				imgTag := `<div style="margin-top:8px"><img src="cid:` + sigImageCID + `" alt="" style="max-width:240px;height:auto;display:block"></div>`
+				if idx := strings.LastIndex(strings.ToLower(in.HTMLBody), "</body>"); idx >= 0 {
+					in.HTMLBody = in.HTMLBody[:idx] + imgTag + in.HTMLBody[idx:]
+				} else {
+					in.HTMLBody += imgTag
+				}
+			}
+		}
+	} else if acct.SignatureHTML != "" || acct.SignatureImage != "" {
+		if acct.SignatureImage != "" {
+			img, err := loadSignatureImage(acct.SignatureImage)
+			if err != nil {
+				return nil, err
+			}
+			in.InlineImages = append(in.InlineImages, img)
+		}
+		in.HTMLBody = buildSignatureHTML(req.TextBody, acct.Signature, acct.SignatureHTML, len(in.InlineImages) > 0)
+	}
+
 	raw, id, err := Compose(in)
 	if err != nil {
 		return nil, err
@@ -437,4 +588,101 @@ func forwardAttachments(m store.Message) ([]Attachment, error) {
 		out = append(out, Attachment{Filename: a.Filename, MIMEType: typ, Data: data})
 	}
 	return out, nil
+}
+
+const sigImageCID = "signature-image@mailand"
+
+func loadSignatureImage(rawPath string) (InlineImage, error) {
+	p := strings.TrimSpace(rawPath)
+	if strings.HasPrefix(p, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			p = filepath.Join(home, p[2:])
+		}
+	}
+	data, err := os.ReadFile(p)
+	if err != nil {
+		return InlineImage{}, fmt.Errorf("%w: signature_image %q: %v", ErrPrecondition, rawPath, err)
+	}
+	if len(data) > maxAttachmentTotal {
+		return InlineImage{}, invalid("signature_image larger than %d MiB", maxAttachmentTotal>>20)
+	}
+	typ := mime.TypeByExtension(strings.ToLower(filepath.Ext(p)))
+	if i := strings.IndexByte(typ, ';'); i >= 0 {
+		typ = strings.TrimSpace(typ[:i])
+	}
+	if typ == "" {
+		typ = http.DetectContentType(data)
+	}
+	return InlineImage{
+		ContentID: sigImageCID,
+		Filename:  filepath.Base(p),
+		MIMEType:  typ,
+		Data:      data,
+	}, nil
+}
+
+// buildSignatureHTML turns the plain-text body into clean HTML and embeds the
+// HTML signature and/or inline signature image in the right place (right after
+// the text signature, above any quoted reply).
+func buildSignatureHTML(textBody, plainSig, sigHTML string, hasImage bool) string {
+	norm := strings.ReplaceAll(strings.ReplaceAll(textBody, "\r\n", "\n"), "\r", "\n")
+	imgTag := ""
+	if hasImage {
+		imgTag = `<div style="margin-top:8px"><img src="cid:` + sigImageCID + `" alt="" style="max-width:240px;height:auto;display:block"></div>`
+	}
+	toHTML := func(s string) string {
+		return strings.ReplaceAll(html.EscapeString(s), "\n", "<br>\n")
+	}
+
+	richSig := strings.TrimSpace(sigHTML)
+	if hasImage && !strings.Contains(richSig, "cid:"+sigImageCID) {
+		if richSig != "" {
+			richSig += "\n" + imgTag
+		} else {
+			richSig = imgTag
+		}
+	}
+
+	// Build the exact plain-text signature block the composer inserted.
+	plainSig = strings.TrimSpace(plainSig)
+	var sigBlock string
+	if plainSig != "" {
+		if strings.HasPrefix(plainSig, "--") {
+			sigBlock = "\n\n" + plainSig
+		} else {
+			sigBlock = "\n\n-- \n" + plainSig
+		}
+	}
+
+	var bodyHTML string
+	if sigBlock != "" {
+		if idx := strings.Index(norm, sigBlock); idx >= 0 {
+			before := norm[:idx]
+			after := norm[idx+len(sigBlock):]
+			if strings.TrimSpace(sigHTML) != "" {
+				// Replace plain signature block with custom HTML signature (+ image).
+				bodyHTML = toHTML(before) + `<div style="margin-top:12px">` + richSig + `</div>` + toHTML(after)
+			} else {
+				// Keep plain text signature and place the image directly beneath it.
+				bodyHTML = toHTML(before+sigBlock) + imgTag + toHTML(after)
+			}
+		}
+	}
+	if bodyHTML == "" {
+		// No plain signature marker found: place before forwarded/quoted block if present, else at end.
+		splitAt := -1
+		for _, marker := range []string{"\n\n---------- Forwarded message ----------", "\n\nOn "} {
+			if i := strings.Index(norm, marker); i >= 0 && (splitAt < 0 || i < splitAt) {
+				splitAt = i
+			}
+		}
+		if splitAt >= 0 {
+			bodyHTML = toHTML(norm[:splitAt]) + `<div style="margin-top:12px">` + richSig + `</div>` + toHTML(norm[splitAt:])
+		} else {
+			bodyHTML = toHTML(norm) + `<div style="margin-top:12px">` + richSig + `</div>`
+		}
+	}
+
+	return `<!doctype html><html><body><div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.45">` +
+		bodyHTML + `</div></body></html>`
 }

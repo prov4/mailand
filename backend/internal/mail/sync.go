@@ -262,11 +262,11 @@ func (w *worker) refreshFlags(ctx context.Context, c *conn, f store.Folder, sel 
 			if !ok {
 				continue
 			}
-			rd, fl := flagsOf(buf.Flags)
-			if cur.IsRead == rd && cur.IsFlagged == fl {
+			rd, fl, ans := flagsOf(buf.Flags)
+			if cur.IsRead == rd && cur.IsFlagged == fl && cur.IsAnswered == ans {
 				continue
 			}
-			if err := w.m.st.UpdateFlags(ctx, f.ID, uint32(buf.UID), rd, fl); err != nil {
+			if err := w.m.st.UpdateFlags(ctx, f.ID, uint32(buf.UID), rd, fl, ans); err != nil {
 				return err
 			}
 			changed++
@@ -304,13 +304,15 @@ func (w *worker) refreshFlags(ctx context.Context, c *conn, f store.Folder, sel 
 	return nil
 }
 
-func flagsOf(flags []imap.Flag) (read, flagged bool) {
+func flagsOf(flags []imap.Flag) (read, flagged, answered bool) {
 	for _, fl := range flags {
 		switch strings.ToLower(string(fl)) {
 		case `\seen`:
 			read = true
 		case `\flagged`:
 			flagged = true
+		case `\answered`:
+			answered = true
 		}
 	}
 	return
@@ -385,7 +387,7 @@ done:
 	}
 	tmp = ""
 
-	rd, fl := flagsOf(flags)
+	rd, fl, ans := flagsOf(flags)
 	ts := internal
 	if parsed.HasDate {
 		ts = parsed.Date
@@ -397,7 +399,7 @@ done:
 		MessageHeader: store.MessageHeader{
 			AccountID: w.acct.ID, FolderID: f.ID, UID: uint32(uid),
 			Subject: parsed.Subject, FromName: parsed.FromName, FromAddress: parsed.FromAddress,
-			TimestampUnix: ts.Unix(), IsRead: rd, IsFlagged: fl,
+			TimestampUnix: ts.Unix(), IsRead: rd, IsFlagged: fl, IsAnswered: ans,
 			HasAttachments: parsed.HasAttachments, Snippet: parsed.Snippet,
 		},
 		MessageIDHeader: parsed.MessageID,

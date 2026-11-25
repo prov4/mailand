@@ -199,6 +199,12 @@ provider = "gmail"
 # poll_interval = "5m"              # how often non-INBOX folders are checked (INBOX is push)
 # caldav_url = "off"                # disable calendar sync for this account
 # carddav_url = "off"               # disable contacts sync for this account
+# signature = """                   # optional per-account email signature
+# Best regards,
+# Your Name
+# """
+# signature_image = "~/.config/mailand/logo.png"  # optional inline logo image under signature
+# signature_html = "<b>Your Name</b>"             # optional custom HTML signature
 ```
 
 Log in. This opens your browser and stores the refresh token in the keyring:
@@ -265,7 +271,7 @@ The first sync of a large mailbox downloads newest first, 500 messages at a time
 
 ### Composer
 
-`c` new message, `r` reply, `R` reply all, `f` forward. Replies quote the original and set `In-Reply-To`/`References`, so threads stay together. **Address autocomplete**: start typing a name or address in To/Cc/Bcc, pick with ↑/↓, and accept with Enter or Tab. `Ctrl+Enter` sends. Sent mail is stored in your Sent folder.
+`c` new message, `r` reply, `R` reply all, `f` forward. Replies quote the original and set `In-Reply-To`/`References`, so threads stay together. If `signature` is set on the account in `config.toml`, it is inserted automatically below your cursor. **Address autocomplete**: start typing a name or address in To/Cc/Bcc (suggests from both your synced contacts and people from previous emails), pick with ↑/↓, and accept with Enter or Tab. Attach files with **Attach…**, `Ctrl+Shift+A`, or drag-and-drop. `Ctrl+Enter` sends. Sent mail is stored in your Sent folder.
 
 ### Calendar
 
@@ -298,9 +304,12 @@ A searchable list (name, email or organization) and a detail panel with emails, 
 | `j` / `k` | Next / previous message (opens it) |
 | `Enter` / `l`, `h` / `Esc` | Into the reader, back to the list |
 | `/` | Search |
+| `u` | Toggle unread / all messages |
 | `g g` / `G` | First / last message |
 | `J` / `K` | Next / previous folder |
+| `[` / `]` | Previous / next account |
 | `r` / `R` / `f` | Reply / reply all / forward |
+| `e` | Archive |
 | `m` / `s` | Toggle read / star |
 | **Composer** | |
 | `Ctrl+Enter` | Send |

@@ -302,3 +302,47 @@ func TestBuildUserAttachments(t *testing.T) {
 		t.Errorf("oversized attachment: got %v, want ErrInvalid", err)
 	}
 }
+
+func TestBuildSignatureImage(t *testing.T) {
+	fx := newFixture(t)
+	bg := context.Background()
+	logoPath := filepath.Join(t.TempDir(), "logo.png")
+	// Minimal PNG header bytes.
+	pngBytes := []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 0, 0, 0, 0}
+	if err := os.WriteFile(logoPath, pngBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	acct := fx.acct
+	acct.Signature = "Best regards,\nJosip"
+	acct.SignatureImage = logoPath
+
+	b, err := Build(bg, fx.st, acct, Request{
+		AccountID:   "acc",
+		To:          []string{"c@example.com"},
+		Subject:     "Hello",
+		TextBody:    "Hi there!\n\n-- \nBest regards,\nJosip",
+		Attachments: []Attachment{{Filename: "doc.txt", MIMEType: "text/plain", Data: []byte("abc")}},
+	}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, p := parseRaw(t, b.Raw)
+	if !strings.Contains(p.TextBody, "Hi there!") || !strings.Contains(p.TextBody, "Josip") {
+		t.Errorf("text body: %q", p.TextBody)
+	}
+	if !strings.Contains(p.HTMLBody, `cid:signature-image@mailand`) || !strings.Contains(p.HTMLBody, "Hi there!") {
+		t.Errorf("html body missing cid image: %q", p.HTMLBody)
+	}
+	var foundInline, foundAttach bool
+	for _, a := range p.Attachments {
+		if a.Inline && a.ContentID == "signature-image@mailand" && a.MIMEType == "image/png" {
+			foundInline = true
+		}
+		if !a.Inline && a.Filename == "doc.txt" {
+			foundAttach = true
+		}
+	}
+	if !foundInline || !foundAttach {
+		t.Fatalf("expected inline signature image and file attachment, got %+v", p.Attachments)
+	}
+}

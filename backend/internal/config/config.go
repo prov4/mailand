@@ -112,6 +112,11 @@ type Account struct {
 
 	PollIntervalStr string        `toml:"poll_interval"`
 	PollInterval    time.Duration `toml:"-"`
+
+	// Signature appended to composed emails (optional, supports multi-line TOML strings).
+	Signature      string `toml:"signature"`
+	SignatureHTML  string `toml:"signature_html"`
+	SignatureImage string `toml:"signature_image"`
 }
 
 // DefaultPollInterval applies when poll_interval is unset.
@@ -353,6 +358,10 @@ email = "someone@gmail.com"
 provider = "gmail"            # "gmail" | "imap"
 # auth = "oauth2_google"      # default for gmail; "password" otherwise
 # poll_interval = "5m"        # secondary-folder polling
+# signature = """
+# Best regards,
+# Your Name
+# """
 
 # [[account]]
 # id = "work"

@@ -21,6 +21,7 @@ type MessageHeader struct {
 	TimestampUnix  int64
 	IsRead         bool
 	IsFlagged      bool
+	IsAnswered     bool
 	HasAttachments bool
 	Snippet        string
 }
@@ -38,21 +39,21 @@ type Message struct {
 }
 
 const headerCols = `m.id, m.seq, m.account_id, m.folder_id, m.uid, m.gm_thrid, m.subject, m.from_name, m.from_address,
-  m.timestamp_unix, m.is_read, m.is_flagged, m.has_attachments, m.snippet`
+  m.timestamp_unix, m.is_read, m.is_flagged, m.is_answered, m.has_attachments, m.snippet`
 
 func scanHeader(sc interface{ Scan(...any) error }, extra ...any) (MessageHeader, error) {
 	var h MessageHeader
 	var thr sql.NullInt64
-	var rd, fl, att int
+	var rd, fl, ans, att int
 	dst := append([]any{&h.ID, &h.Seq, &h.AccountID, &h.FolderID, &h.UID, &thr, &h.Subject, &h.FromName,
-		&h.FromAddress, &h.TimestampUnix, &rd, &fl, &att, &h.Snippet}, extra...)
+		&h.FromAddress, &h.TimestampUnix, &rd, &fl, &ans, &att, &h.Snippet}, extra...)
 	if err := sc.Scan(dst...); err != nil {
 		return h, err
 	}
 	if thr.Valid {
 		h.GmThrID = &thr.Int64
 	}
-	h.IsRead, h.IsFlagged, h.HasAttachments = rd != 0, fl != 0, att != 0
+	h.IsRead, h.IsFlagged, h.IsAnswered, h.HasAttachments = rd != 0, fl != 0, ans != 0, att != 0
 	return h, nil
 }
 
@@ -110,20 +111,20 @@ func (s *Store) UpsertMessage(ctx context.Context, m Message, folderIDs []string
 
 		err = tx.QueryRowContext(ctx, `
 INSERT INTO messages (id, account_id, folder_id, uid, gm_msgid, gm_thrid, message_id_header, subject,
-  from_name, from_address, to_json, cc_json, timestamp_unix, is_read, is_flagged, has_attachments,
+  from_name, from_address, to_json, cc_json, timestamp_unix, is_read, is_flagged, is_answered, has_attachments,
   snippet, text_body, html_body, raw_blob_path)
-VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 ON CONFLICT `+conflict+` DO UPDATE SET
   folder_id=excluded.folder_id, uid=excluded.uid, gm_msgid=excluded.gm_msgid, gm_thrid=excluded.gm_thrid,
   message_id_header=excluded.message_id_header, subject=excluded.subject, from_name=excluded.from_name,
   from_address=excluded.from_address, to_json=excluded.to_json, cc_json=excluded.cc_json,
   timestamp_unix=excluded.timestamp_unix, is_read=excluded.is_read, is_flagged=excluded.is_flagged,
-  has_attachments=excluded.has_attachments, snippet=excluded.snippet, text_body=excluded.text_body,
-  html_body=excluded.html_body, raw_blob_path=excluded.raw_blob_path
+  is_answered=excluded.is_answered, has_attachments=excluded.has_attachments, snippet=excluded.snippet,
+  text_body=excluded.text_body, html_body=excluded.html_body, raw_blob_path=excluded.raw_blob_path
 RETURNING seq`,
 			m.ID, m.AccountID, m.FolderID, m.UID, nullInt(m.GmMsgID), nullInt(m.GmThrID), nullStr(m.MessageIDHeader),
 			m.Subject, m.FromName, m.FromAddress, m.ToJSON, m.CcJSON, m.TimestampUnix, b2i(m.IsRead),
-			b2i(m.IsFlagged), b2i(m.HasAttachments), m.Snippet, m.TextBody, m.HTMLBody, nullStr(m.RawBlobPath)).Scan(&seq)
+			b2i(m.IsFlagged), b2i(m.IsAnswered), b2i(m.HasAttachments), m.Snippet, m.TextBody, m.HTMLBody, nullStr(m.RawBlobPath)).Scan(&seq)
 		if err != nil {
 			return err
 		}
@@ -178,7 +179,7 @@ func (s *Store) SetMessageFolders(ctx context.Context, seq int64, folderIDs []st
 
 // UpdateFlags sets flags for the message with source (folderID, uid), e.g. from
 // an IMAP FETCH FLAGS update. A missing message is not an error.
-func (s *Store) UpdateFlags(ctx context.Context, folderID string, uid uint32, isRead, isFlagged bool) error {
+func (s *Store) UpdateFlags(ctx context.Context, folderID string, uid uint32, isRead, isFlagged, isAnswered bool) error {
 	return s.inTx(ctx, func(tx *sql.Tx) error {
 		var seq int64
 		var wasRead bool
@@ -189,11 +190,18 @@ func (s *Store) UpdateFlags(ctx context.Context, folderID string, uid uint32, is
 		if err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE messages SET is_read=?, is_flagged=? WHERE seq=?`, b2i(isRead), b2i(isFlagged), seq); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE messages SET is_read=?, is_flagged=?, is_answered=? WHERE seq=?`,
+			b2i(isRead), b2i(isFlagged), b2i(isAnswered), seq); err != nil {
 			return err
 		}
 		return adjustForSeq(ctx, tx, seq, unread(isRead)-unread(wasRead))
 	})
+}
+
+// SetAnswered marks the given message as replied (\Answered). Unknown ids are skipped.
+func (s *Store) SetAnswered(ctx context.Context, messageID string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE messages SET is_answered=1 WHERE id=?`, messageID)
+	return err
 }
 
 // SetFlags updates flags by message id; nil leaves a flag unchanged. Unknown ids are skipped.
@@ -320,15 +328,33 @@ FROM messages m WHERE m.id=?`, id),
 // ListMessages returns one page of a folder/label view, newest first, plus the
 // total number of messages in it. It reads message_folders (idx_message_folders_list).
 func (s *Store) ListMessages(ctx context.Context, folderID string, limit, offset int) ([]MessageHeader, int, error) {
+	return s.ListMessagesFiltered(ctx, folderID, limit, offset, false)
+}
+
+// ListMessagesFiltered is ListMessages with an optional unread-only filter.
+func (s *Store) ListMessagesFiltered(ctx context.Context, folderID string, limit, offset int, unreadOnly bool) ([]MessageHeader, int, error) {
 	var total int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM message_folders WHERE folder_id=?`, folderID).Scan(&total); err != nil {
+	var err error
+	if unreadOnly {
+		err = s.db.QueryRowContext(ctx, `SELECT COUNT(*)
+FROM message_folders mf JOIN messages m ON m.seq = mf.message_seq
+WHERE mf.folder_id = ? AND m.is_read = 0`, folderID).Scan(&total)
+	} else {
+		err = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM message_folders WHERE folder_id=?`, folderID).Scan(&total)
+	}
+	if err != nil {
 		return nil, 0, err
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT `+headerCols+`
+	q := `SELECT ` + headerCols + `
 FROM message_folders mf JOIN messages m ON m.seq = mf.message_seq
-WHERE mf.folder_id = ?
+WHERE mf.folder_id = ?`
+	if unreadOnly {
+		q += ` AND m.is_read = 0`
+	}
+	q += `
 ORDER BY mf.timestamp_unix DESC, mf.rowid ASC
-LIMIT ? OFFSET ?`, folderID, limit, offset)
+LIMIT ? OFFSET ?`
+	rows, err := s.db.QueryContext(ctx, q, folderID, limit, offset)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -342,6 +368,17 @@ LIMIT ? OFFSET ?`, folderID, limit, offset)
 		out = append(out, h)
 	}
 	return out, total, rows.Err()
+}
+
+// RemoveMessageFromFolder removes seq from folderID's membership and updates
+// that folder's unread count atomically.
+func (s *Store) RemoveMessageFromFolder(ctx context.Context, seq int64, folderID string) error {
+	return s.inTx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM message_folders WHERE message_seq=? AND folder_id=?`, seq, folderID); err != nil {
+			return err
+		}
+		return recomputeUnread(ctx, tx, []string{folderID})
+	})
 }
 
 // MessagesByAddress returns the newest messages from, to or cc any of the

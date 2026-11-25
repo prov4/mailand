@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
-	"net/mail"
 	"os"
 	"strings"
 	"sync"
@@ -38,6 +37,7 @@ const (
 type Syncer interface {
 	TriggerSync(accountID string) error
 	SetFlags(ctx context.Context, messageIDs []string, isRead, isFlagged *bool) error
+	ArchiveMessages(ctx context.Context, messageIDs []string) error
 }
 
 // Sender delivers a composed message (implemented by send.Sender and
@@ -120,7 +120,7 @@ func header(h store.MessageHeader) *pb.MessageHeader {
 	return &pb.MessageHeader{
 		Id: h.ID, FolderId: h.FolderID, Uid: h.UID, Subject: h.Subject,
 		FromName: h.FromName, FromAddress: h.FromAddress, TimestampUnix: h.TimestampUnix,
-		IsRead: h.IsRead, IsFlagged: h.IsFlagged, HasAttachments: h.HasAttachments, Snippet: h.Snippet,
+		IsRead: h.IsRead, IsFlagged: h.IsFlagged, IsAnswered: h.IsAnswered, HasAttachments: h.HasAttachments, Snippet: h.Snippet,
 	}
 }
 
@@ -131,7 +131,7 @@ func (s *Server) ListAccounts(ctx context.Context, _ *pb.Empty) (*pb.AccountList
 	}
 	out := &pb.AccountList{}
 	for _, a := range accs {
-		out.Accounts = append(out.Accounts, &pb.Account{Id: a.ID, Name: a.Name, Email: a.Email})
+		out.Accounts = append(out.Accounts, &pb.Account{Id: a.ID, Name: a.Name, Email: a.Email, Signature: a.Signature})
 	}
 	return out, nil
 }
@@ -172,7 +172,7 @@ func (s *Server) ListMessages(ctx context.Context, req *pb.ListMessagesRequest) 
 		limit = defaultLimit
 	}
 	limit = min(limit, maxLimit)
-	hs, total, err := s.st.ListMessages(ctx, req.FolderId, limit, int(req.Offset))
+	hs, total, err := s.st.ListMessagesFiltered(ctx, req.FolderId, limit, int(req.Offset), req.UnreadOnly)
 	if err != nil {
 		return nil, s.mapErr("ListMessages", err, "folder")
 	}
@@ -209,10 +209,24 @@ func formatAddrs(js string) []string {
 		case a.Name == "":
 			out = append(out, a.Address)
 		default:
-			out = append(out, (&mail.Address{Name: a.Name, Address: a.Address}).String())
+			out = append(out, formatDisplayAddr(a.Name, a.Address))
 		}
 	}
 	return out
+}
+
+// formatDisplayAddr formats a human-readable "Name <addr>" without RFC 2047
+// encoding (net/mail.Address.String Q-encodes non-ASCII names for wire headers).
+// Names containing RFC 5322 specials are quoted so address lists split cleanly.
+func formatDisplayAddr(name, addr string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return addr
+	}
+	if strings.ContainsAny(name, `,;<>@()[]\":.\`) {
+		name = `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(name) + `"`
+	}
+	return name + " <" + addr + ">"
 }
 
 func (s *Server) attachments(m store.Message) []*pb.AttachmentInfo {
@@ -303,7 +317,7 @@ func (s *Server) SearchMessages(ctx context.Context, req *pb.SearchRequest) (*pb
 		limit = defaultSearchLimit
 	}
 	limit = min(limit, maxSearchLimit)
-	hits, err := s.st.Search(ctx, req.Query, req.AccountId, limit)
+	hits, err := s.st.SearchFiltered(ctx, req.Query, req.AccountId, limit, req.UnreadOnly)
 	if err != nil {
 		return nil, s.mapErr("SearchMessages", err, "account")
 	}
@@ -333,6 +347,24 @@ func (s *Server) SetMessageFlags(ctx context.Context, req *pb.SetFlagsRequest) (
 	}
 	if err := s.sync.SetFlags(ctx, req.MessageIds, req.IsRead, req.IsFlagged); err != nil {
 		return nil, s.mapErr("SetMessageFlags", err, "message")
+	}
+	return &pb.Empty{}, nil
+}
+
+func (s *Server) ArchiveMessages(ctx context.Context, req *pb.ArchiveRequest) (*pb.Empty, error) {
+	if len(req.MessageIds) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "message_ids is required")
+	}
+	for _, id := range req.MessageIds {
+		if id == "" {
+			return nil, status.Error(codes.InvalidArgument, "message_ids must not contain empty ids")
+		}
+	}
+	if s.sync == nil {
+		return nil, status.Error(codes.FailedPrecondition, "no accounts configured")
+	}
+	if err := s.sync.ArchiveMessages(ctx, req.MessageIds); err != nil {
+		return nil, s.mapErr("ArchiveMessages", err, "message")
 	}
 	return &pb.Empty{}, nil
 }
@@ -380,7 +412,7 @@ func (s *Server) SubscribeEvents(_ *pb.Empty, stream grpc.ServerStreamingServer[
 func (s *Server) SendMessage(ctx context.Context, req *pb.SendMessageRequest) (*pb.SendMessageResponse, error) {
 	r := send.Request{
 		AccountID: req.AccountId, To: req.To, Cc: req.Cc, Bcc: req.Bcc, Subject: req.Subject,
-		TextBody: req.TextBody, InReplyTo: req.InReplyTo, ReplyToID: req.ReplyToId, ForwardOfID: req.ForwardOfId,
+		TextBody: req.TextBody, HTMLBody: req.HtmlBody, InReplyTo: req.InReplyTo, ReplyToID: req.ReplyToId, ForwardOfID: req.ForwardOfId,
 	}
 	if len(req.Attachments) > 0 {
 		r.Attachments = make([]send.Attachment, len(req.Attachments))

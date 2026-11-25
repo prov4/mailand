@@ -23,9 +23,12 @@ Popup {
             { keys: "Enter / l", what: "Focus reader pane" },
             { keys: "h / Esc", what: "Back to message list" },
             { keys: "/", what: "Search" },
+            { keys: "u", what: "Toggle unread / all" },
             { keys: "g g / G", what: "First / last message" },
             { keys: "J / K", what: "Next / previous folder" },
+            { keys: "[ / ]", what: "Previous / next account" },
             { keys: "r / R / f", what: "Reply / reply all / forward" },
+            { keys: "e", what: "Archive" },
             { keys: "m / s", what: "Toggle read / star" }
         ] },
         { title: "Composer", rows: [

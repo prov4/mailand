@@ -18,7 +18,7 @@ bool MessageModel::Item::sameAs(const Item &o) const
 {
     return id == o.id && subject == o.subject && fromName == o.fromName
            && fromAddress == o.fromAddress && snippetRaw == o.snippetRaw && ts == o.ts
-           && isRead == o.isRead && isFlagged == o.isFlagged && hasAttachments == o.hasAttachments;
+           && isRead == o.isRead && isFlagged == o.isFlagged && isAnswered == o.isAnswered && hasAttachments == o.hasAttachments;
 }
 
 MessageModel::Item MessageModel::fromProto(const void *p)
@@ -33,6 +33,7 @@ MessageModel::Item MessageModel::fromProto(const void *p)
     it.ts = h.timestamp_unix();
     it.isRead = h.is_read();
     it.isFlagged = h.is_flagged();
+    it.isAnswered = h.is_answered();
     it.hasAttachments = h.has_attachments();
     return it;
 }
@@ -76,6 +77,7 @@ QVariant MessageModel::data(const QModelIndex &index, int role) const
     case DateTextRole: return Format::shortDate(m.ts);
     case IsReadRole: return m.isRead;
     case IsFlaggedRole: return m.isFlagged;
+    case IsAnsweredRole: return m.isAnswered;
     case HasAttachmentsRole: return m.hasAttachments;
     case SnippetRole: return Format::snippetPlain(m.snippetRaw);
     case SnippetRichRole: return Format::snippetRich(m.snippetRaw);
@@ -89,7 +91,7 @@ QHash<int, QByteArray> MessageModel::roleNames() const
         {MessageIdRole, "messageId"}, {SubjectRole, "subject"}, {FromNameRole, "fromName"},
         {FromAddressRole, "fromAddress"}, {SenderRole, "sender"}, {TimestampRole, "timestamp"},
         {DateTextRole, "dateText"}, {IsReadRole, "isRead"}, {IsFlaggedRole, "isFlagged"},
-        {HasAttachmentsRole, "hasAttachments"}, {SnippetRole, "snippet"},
+        {IsAnsweredRole, "isAnswered"}, {HasAttachmentsRole, "hasAttachments"}, {SnippetRole, "snippet"},
         {SnippetRichRole, "snippetRich"},
     };
 }
@@ -154,6 +156,23 @@ void MessageModel::setSearchQuery(const QString &q)
     }
 }
 
+void MessageModel::setUnreadOnly(bool on)
+{
+    if (on == m_unreadOnly)
+        return;
+    m_unreadOnly = on;
+    emit unreadOnlyChanged();
+    ++m_gen;
+    if (!m_items.empty()) {
+        beginResetModel();
+        m_items.clear();
+        endResetModel();
+        emit countChanged();
+    }
+    setTotal(0);
+    refresh();
+}
+
 bool MessageModel::canFetchMore(const QModelIndex &parent) const
 {
     return !parent.isValid() && !searchMode() && !m_folderId.isEmpty() && !m_loading
@@ -205,12 +224,12 @@ void MessageModel::load(bool appendPage)
     };
 
     if (searchMode()) {
-        rpc->searchMessages(m_query, m_accountId, kSearchLimit, this, std::move(onDone));
+        rpc->searchMessages(m_query, m_accountId, kSearchLimit, m_unreadOnly, this, std::move(onDone));
     } else if (appendPage) {
-        rpc->listMessages(m_folderId, kPage, quint32(m_items.size()), this, std::move(onDone));
+        rpc->listMessages(m_folderId, kPage, quint32(m_items.size()), m_unreadOnly, this, std::move(onDone));
     } else {
         const quint32 limit = std::clamp<quint32>(quint32(m_items.size()), kPage, kRefreshCap);
-        rpc->listMessages(m_folderId, limit, 0, this, std::move(onDone));
+        rpc->listMessages(m_folderId, limit, 0, m_unreadOnly, this, std::move(onDone));
     }
 }
 
@@ -333,6 +352,26 @@ void MessageModel::toggleFlagged(int row)
     if (row < 0 || row >= int(m_items.size()))
         return;
     setFlag(m_items[row].id, false, !m_items[row].isFlagged);
+}
+
+void MessageModel::archive(int row)
+{
+    if (row < 0 || row >= int(m_items.size()))
+        return;
+    const QString id = m_items[row].id;
+    beginRemoveRows({}, row, row);
+    m_items.erase(m_items.begin() + row);
+    endRemoveRows();
+    if (m_total > 0)
+        setTotal(m_total - 1);
+    emit countChanged();
+
+    Rpc::instance()->archiveMessage(id, this, [this](const grpc::Status &st, const mailand::v1::Empty &) {
+        if (st.ok())
+            return;
+        refresh();
+        Rpc::instance()->reportError(QStringLiteral("Could not archive message: ") + Rpc::statusText(st));
+    });
 }
 
 // Optimistic: update the row now, send SetMessageFlags, revert on failure.

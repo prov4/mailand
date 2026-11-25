@@ -126,12 +126,16 @@ func sortEvents(evs []*pb.CalendarEvent) {
 }
 
 // ListContacts searches synced contacts by name, email or organization.
+// When email_only is set and query is non-empty (composer autocomplete),
+// people seen in stored emails (From/To/Cc) are also suggested after synced
+// contacts, deduplicated by email address.
 func (s *Server) ListContacts(ctx context.Context, req *pb.ListContactsRequest) (*pb.ContactList, error) {
 	limit := int(req.Limit)
 	if limit == 0 {
 		limit = defaultContactLimit
 	}
-	cs, err := s.st.SearchContacts(ctx, req.Query, req.EmailOnly, min(limit, maxContactLimit))
+	limit = min(limit, maxContactLimit)
+	cs, err := s.st.SearchContacts(ctx, req.Query, req.EmailOnly, limit)
 	if err != nil {
 		return nil, s.mapErr("ListContacts", err, "contact")
 	}
@@ -144,8 +148,26 @@ func (s *Server) ListContacts(ctx context.Context, req *pb.ListContactsRequest) 
 		ro[b.ID] = b.ReadOnly
 	}
 	out := &pb.ContactList{}
+	seenEmails := map[string]bool{}
 	for _, c := range cs {
 		out.Contacts = append(out.Contacts, contactPB(c, ro[c.AddressBookID]))
+		for _, e := range c.Emails {
+			seenEmails[strings.ToLower(strings.TrimSpace(e))] = true
+		}
+	}
+	if req.EmailOnly && strings.TrimSpace(req.Query) != "" && len(out.Contacts) < limit {
+		extra, err := s.st.SearchMessageAddresses(ctx, req.Query, limit-len(out.Contacts), seenEmails)
+		if err != nil {
+			return nil, s.mapErr("ListContacts", err, "message")
+		}
+		for _, a := range extra {
+			out.Contacts = append(out.Contacts, &pb.Contact{
+				Id:       "mail:" + strings.ToLower(a.Address),
+				FullName: a.Name,
+				Emails:   []string{a.Address},
+				ReadOnly: true,
+			})
+		}
 	}
 	return out, nil
 }

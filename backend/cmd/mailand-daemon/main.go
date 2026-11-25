@@ -118,7 +118,9 @@ func run(log *slog.Logger, socket string, offline bool) error {
 		responder = davMgr
 		contacts = davMgr
 		syncer = syncers{mgr, davMgr}
-		sender = send.NewSender(ctx, cfg, st, mgr.TriggerSync, log)
+		s := send.NewSender(ctx, cfg, st, mgr.TriggerSync, log)
+		s.SetMarkAnswered(mgr.MarkAnswered)
+		sender = s
 	}
 
 	srv := rpc.NewServer(st, syncer, broker, log)

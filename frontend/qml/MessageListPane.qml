@@ -70,30 +70,63 @@ FocusScope {
         anchors.rightMargin: 1
         spacing: 0
 
-        // Search
-        TextField {
-            id: searchField
+        // Search + Unread filter toggle
+        RowLayout {
             Layout.fillWidth: true
             Layout.margins: Theme.s2
-            implicitHeight: 36
-            placeholderText: "Search mail  (/)"
-            placeholderTextColor: Theme.textFaint
-            color: Theme.text
-            selectByMouse: true
-            font.pixelSize: Theme.fontBody
-            leftPadding: Theme.s3
-            background: Rectangle {
-                radius: Theme.radius
-                color: Theme.surface
-                border.color: searchField.activeFocus ? Theme.accent : Theme.border
+            spacing: Theme.s2
+
+            TextField {
+                id: searchField
+                Layout.fillWidth: true
+                implicitHeight: 36
+                placeholderText: "Search mail  (/)"
+                placeholderTextColor: Theme.textFaint
+                color: Theme.text
+                selectByMouse: true
+                font.pixelSize: Theme.fontBody
+                leftPadding: Theme.s3
+                background: Rectangle {
+                    radius: Theme.radius
+                    color: Theme.surface
+                    border.color: searchField.activeFocus ? Theme.accent : Theme.border
+                }
+                onTextChanged: root.messages.searchQuery = text
+                Keys.onEscapePressed: {
+                    text = ""
+                    list.forceActiveFocus()
+                }
+                Keys.onReturnPressed: list.forceActiveFocus()
+                Keys.onDownPressed: { list.forceActiveFocus(); root.selectRow(0) }
             }
-            onTextChanged: root.messages.searchQuery = text
-            Keys.onEscapePressed: {
-                text = ""
-                list.forceActiveFocus()
+
+            Button {
+                id: unreadBtn
+                text: "Unread"
+                checkable: true
+                checked: root.messages.unreadOnly
+                focusPolicy: Qt.NoFocus
+                implicitHeight: 36
+                onClicked: root.messages.unreadOnly = !root.messages.unreadOnly
+                ToolTip.visible: hovered
+                ToolTip.delay: 500
+                ToolTip.text: "Toggle unread only (u)"
+                contentItem: Label {
+                    text: unreadBtn.text
+                    color: unreadBtn.checked ? Theme.accentText : Theme.textMuted
+                    font.pixelSize: Theme.fontSmall
+                    font.bold: unreadBtn.checked
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                    leftPadding: Theme.s2
+                    rightPadding: Theme.s2
+                }
+                background: Rectangle {
+                    radius: Theme.radius
+                    color: unreadBtn.checked ? Theme.accent : Theme.surface
+                    border.color: unreadBtn.checked ? Theme.accent : Theme.border
+                }
             }
-            Keys.onReturnPressed: list.forceActiveFocus()
-            Keys.onDownPressed: { list.forceActiveFocus(); root.selectRow(0) }
         }
         Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
 
@@ -129,6 +162,7 @@ FocusScope {
                 required property string dateText
                 required property bool isRead
                 required property bool isFlagged
+                required property bool isAnswered
                 required property bool hasAttachments
                 required property string snippet
                 required property string snippetRich
@@ -168,7 +202,7 @@ FocusScope {
                 Text {
                     id: indicators
                     anchors { right: dateLabel.left; rightMargin: Theme.s2; verticalCenter: dateLabel.verticalCenter }
-                    text: (row.hasAttachments ? "⧉ " : "") + (row.isFlagged ? "★" : "")
+                    text: (row.isAnswered ? "↩ " : "") + (row.hasAttachments ? "⧉ " : "") + (row.isFlagged ? "★" : "")
                     color: row.isFlagged ? Theme.flag : Theme.textMuted
                     font.pixelSize: Theme.fontSmall
                 }
@@ -225,7 +259,11 @@ FocusScope {
                 visible: list.count === 0 && !root.messages.loading
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: root.searching ? "No results for “" + root.messages.searchQuery + "”" : "No messages"
+                    text: root.searching
+                          ? (root.messages.unreadOnly
+                             ? "No unread results for “" + root.messages.searchQuery + "”"
+                             : "No results for “" + root.messages.searchQuery + "”")
+                          : (root.messages.unreadOnly ? "No unread messages" : "No messages")
                     color: Theme.textMuted
                     font.pixelSize: Theme.fontBody
                 }

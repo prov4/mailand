@@ -73,7 +73,7 @@ WHERE mf.folder_id=? AND m.is_read=0`, id).Scan(&want))
 			}
 		case r < 8:
 			op = "updateflags"
-			must(t, s.UpdateFlags(ctx, f["All"], uint32(rng.Intn(80)+1), rng.Intn(2) == 0, rng.Intn(2) == 0))
+			must(t, s.UpdateFlags(ctx, f["All"], uint32(rng.Intn(80)+1), rng.Intn(2) == 0, rng.Intn(2) == 0, rng.Intn(2) == 0))
 		case r < 9:
 			op = "setflags"
 			rd := rng.Intn(2) == 0

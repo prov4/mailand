@@ -42,9 +42,13 @@ func buildFTSQuery(q string) string {
 }
 
 // Search runs a plain-words full-text query. accountID "" searches all accounts.
-// Results are ranked by bm25 (subject 10, from_name 4, from_address 4, body 1)
-// then newest first. limit <= 0 means 50. Empty/symbol-only queries return nil.
+// Results are ordered newest first. limit <= 0 means 50. Empty/symbol-only queries return nil.
 func (s *Store) Search(ctx context.Context, userQuery, accountID string, limit int) ([]SearchHit, error) {
+	return s.SearchFiltered(ctx, userQuery, accountID, limit, false)
+}
+
+// SearchFiltered is Search with an optional unread-only filter.
+func (s *Store) SearchFiltered(ctx context.Context, userQuery, accountID string, limit int, unreadOnly bool) ([]SearchHit, error) {
 	match := buildFTSQuery(userQuery)
 	if match == "" {
 		return nil, nil
@@ -60,7 +64,10 @@ WHERE messages_fts MATCH ?`
 		query += ` AND m.account_id = ?`
 		args = append(args, accountID)
 	}
-	query += ` ORDER BY bm25(messages_fts, 10.0, 4.0, 4.0, 1.0), m.timestamp_unix DESC LIMIT ?`
+	if unreadOnly {
+		query += ` AND m.is_read = 0`
+	}
+	query += ` ORDER BY m.timestamp_unix DESC, m.seq DESC LIMIT ?`
 	args = append(args, limit)
 
 	rows, err := s.db.QueryContext(ctx, query, args...)

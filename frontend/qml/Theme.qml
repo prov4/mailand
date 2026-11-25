@@ -1,27 +1,28 @@
 pragma Singleton
 import QtQuick
+import Mailand
 
-// Design tokens for mailand. Calm dark palette; contrast ratios of text on bg/surface are >= 7:1,
-// textMuted >= 4.5:1.
+// Design tokens for mailand. Follows the active Omarchy theme live via OmarchyTheme
+// (with calm dark defaults when Omarchy is absent).
 QtObject {
     // Surfaces
-    readonly property color bg: "#14161a"
-    readonly property color surface: "#1a1d23"
-    readonly property color surfaceAlt: "#21252d"
-    readonly property color border: "#2b303a"
+    readonly property color bg: OmarchyTheme.bg
+    readonly property color surface: OmarchyTheme.surface
+    readonly property color surfaceAlt: OmarchyTheme.surfaceAlt
+    readonly property color border: OmarchyTheme.border
     // Text
-    readonly property color text: "#e6e9ef"
-    readonly property color textMuted: "#a0a8b6"
-    readonly property color textFaint: "#7d8595"
+    readonly property color text: OmarchyTheme.text
+    readonly property color textMuted: OmarchyTheme.textMuted
+    readonly property color textFaint: OmarchyTheme.textFaint
     // Accents
-    readonly property color accent: "#7aa2f7"
-    readonly property color accentText: "#0f1115"
-    readonly property color unreadDot: "#7aa2f7"
-    readonly property color flag: "#e5c07b"
-    readonly property color danger: "#f07178"
-    readonly property color success: "#8fd19e"
-    readonly property color selection: "#2a3550"
-    readonly property color selectionInactive: "#232a3a"
+    readonly property color accent: OmarchyTheme.accent
+    readonly property color accentText: OmarchyTheme.accentText
+    readonly property color unreadDot: OmarchyTheme.unreadDot
+    readonly property color flag: OmarchyTheme.flag
+    readonly property color danger: OmarchyTheme.danger
+    readonly property color success: OmarchyTheme.success
+    readonly property color selection: OmarchyTheme.selection
+    readonly property color selectionInactive: OmarchyTheme.selectionInactive
     // Light canvas for HTML mail
     readonly property color mailCanvas: "#ffffff"
 

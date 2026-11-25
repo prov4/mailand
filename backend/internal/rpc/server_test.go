@@ -25,6 +25,7 @@ type fakeSyncer struct {
 	mu        sync.Mutex
 	triggered []string
 	ids       []string
+	archived  []string
 	read, flg *bool
 	err       error
 }
@@ -40,6 +41,13 @@ func (f *fakeSyncer) SetFlags(_ context.Context, ids []string, r, fl *bool) erro
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.ids, f.read, f.flg = ids, r, fl
+	return f.err
+}
+
+func (f *fakeSyncer) ArchiveMessages(_ context.Context, ids []string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.archived = ids
 	return f.err
 }
 
@@ -225,8 +233,14 @@ func TestGetMessage(t *testing.T) {
 	if len(d.Header.FolderIds) != 2 || d.TextBody != "the zebra migrates north" || len(d.Attachments) != 0 {
 		t.Errorf("multi: %v", d)
 	}
-	if len(d.ToAddresses) != 2 || d.ToAddresses[0] != `"Bob B" <bob@example.com>` || d.ToAddresses[1] != "carol@example.com" {
+	if len(d.ToAddresses) != 2 || d.ToAddresses[0] != `Bob B <bob@example.com>` || d.ToAddresses[1] != "carol@example.com" {
 		t.Errorf("to = %q", d.ToAddresses)
+	}
+	// Non-ASCII display names must stay readable UTF-8 (not RFC 2047 Q-encoded).
+	if got := formatAddrs(`[{"Name":"Ivana Rajković Pavlić","Address":"ivana@zicer.hr"},{"Name":"Doe, Jane","Address":"jane@example.com"}]`); len(got) != 2 ||
+		got[0] != "Ivana Rajković Pavlić <ivana@zicer.hr>" ||
+		got[1] != `"Doe, Jane" <jane@example.com>` {
+		t.Errorf("formatAddrs utf8/quoted = %q", got)
 	}
 	if len(d.CcAddresses) != 1 || d.CcAddresses[0] != "dave@example.com" {
 		t.Errorf("cc = %q", d.CcAddresses)

@@ -142,7 +142,8 @@ void Rpc::refreshAccounts()
             for (const auto &a : resp.accounts())
                 list.append(QVariantMap{{QStringLiteral("id"), s(a.id())},
                                         {QStringLiteral("name"), s(a.name())},
-                                        {QStringLiteral("email"), s(a.email())}});
+                                        {QStringLiteral("email"), s(a.email())},
+                                        {QStringLiteral("signature"), s(a.signature())}});
             m_accounts = list;
             emit accountsChanged();
         },
@@ -182,13 +183,14 @@ void Rpc::listFolders(const QString &accountId, QObject *ctx, Done<mailand::v1::
         ctx, std::move(done));
 }
 
-void Rpc::listMessages(const QString &folderId, quint32 limit, quint32 offset, QObject *ctx,
-                       Done<mailand::v1::MessageHeaderList> done)
+void Rpc::listMessages(const QString &folderId, quint32 limit, quint32 offset, bool unreadOnly,
+                       QObject *ctx, Done<mailand::v1::MessageHeaderList> done)
 {
     mailand::v1::ListMessagesRequest req;
     req.set_folder_id(folderId.toStdString());
     req.set_limit(limit);
     req.set_offset(offset);
+    req.set_unread_only(unreadOnly);
     call<mailand::v1::MessageHeaderList>(
         std::move(req),
         [](auto *a, auto *cx, const auto *rq, auto *rs, auto cb) { a->ListMessages(cx, rq, rs, std::move(cb)); },
@@ -196,12 +198,13 @@ void Rpc::listMessages(const QString &folderId, quint32 limit, quint32 offset, Q
 }
 
 void Rpc::searchMessages(const QString &query, const QString &accountId, quint32 limit,
-                         QObject *ctx, Done<mailand::v1::MessageHeaderList> done)
+                         bool unreadOnly, QObject *ctx, Done<mailand::v1::MessageHeaderList> done)
 {
     mailand::v1::SearchRequest req;
     req.set_query(query.toStdString());
     req.set_account_id(accountId.toStdString());
     req.set_limit(limit);
+    req.set_unread_only(unreadOnly);
     call<mailand::v1::MessageHeaderList>(
         std::move(req),
         [](auto *a, auto *cx, const auto *rq, auto *rs, auto cb) { a->SearchMessages(cx, rq, rs, std::move(cb)); },
@@ -243,6 +246,16 @@ void Rpc::setFlags(const QString &messageId, std::optional<bool> isRead,
         std::move(req),
         [](auto *a, auto *cx, const auto *rq, auto *rs, auto cb) { a->SetMessageFlags(cx, rq, rs, std::move(cb)); },
         ctx, std::move(done));
+}
+
+void Rpc::archiveMessage(const QString &messageId, QObject *ctx, Done<mailand::v1::Empty> done)
+{
+    mailand::v1::ArchiveRequest req;
+    req.add_message_ids(messageId.toStdString());
+    call<mailand::v1::Empty>(
+        std::move(req),
+        [](auto *a, auto *cx, const auto *rq, auto *rs, auto cb) { a->ArchiveMessages(cx, rq, rs, std::move(cb)); },
+        ctx, std::move(done), 20000);
 }
 
 void Rpc::sendMessage(mailand::v1::SendMessageRequest req, QObject *ctx,

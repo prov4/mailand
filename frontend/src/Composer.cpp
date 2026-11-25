@@ -99,6 +99,23 @@ QString Composer::ownEmail() const
     return {};
 }
 
+QString Composer::signatureBlock() const
+{
+    const auto accounts = Rpc::instance()->accounts();
+    for (const QVariant &v : accounts) {
+        const QVariantMap m = v.toMap();
+        if (m.value(QStringLiteral("id")).toString() == m_accountId) {
+            const QString sig = m.value(QStringLiteral("signature")).toString().trimmed();
+            if (sig.isEmpty())
+                return {};
+            if (sig.startsWith(QStringLiteral("--")))
+                return QStringLiteral("\n\n") + sig;
+            return QStringLiteral("\n\n-- \n") + sig;
+        }
+    }
+    return {};
+}
+
 QString Composer::fromText() const
 {
     const auto accounts = Rpc::instance()->accounts();
@@ -137,6 +154,36 @@ MAILAND_SETTER(setBcc, m_bcc, bccChanged)
 MAILAND_SETTER(setSubject, m_subject, subjectChanged)
 MAILAND_SETTER(setBody, m_body, bodyChanged)
 #undef MAILAND_SETTER
+
+void Composer::setHtmlBody(const QString &v)
+{
+    if (v == m_htmlBody)
+        return;
+    m_htmlBody = v;
+    emit htmlBodyChanged();
+}
+
+void Composer::setSignatureEnabled(bool on)
+{
+    if (on == m_signatureEnabled)
+        return;
+    m_signatureEnabled = on;
+    emit signatureEnabledChanged();
+    const QString sig = signatureBlock();
+    if (sig.isEmpty())
+        return;
+    if (on) {
+        if (!m_body.contains(sig))
+            setBody(m_body + sig);
+    } else {
+        QString b = m_body;
+        const int idx = b.indexOf(sig);
+        if (idx >= 0) {
+            b.remove(idx, sig.size());
+            setBody(b);
+        }
+    }
+}
 
 void Composer::snapshot()
 {
@@ -199,13 +246,21 @@ void Composer::reset(const QString &mode, const QString &accountId)
         m_mode = mode;
         emit modeChanged();
     }
-    setTo({}); setCc({}); setBcc({}); setSubject({}); setBody({});
+    setTo({}); setCc({}); setBcc({}); setSubject({}); setBody({}); setHtmlBody({});
+    if (!m_signatureEnabled) {
+        m_signatureEnabled = true;
+        emit signatureEnabledChanged();
+    }
     snapshot();
 }
 
 void Composer::initNew(const QString &accountId)
 {
     reset(QStringLiteral("new"), accountId);
+    if (const QString sig = signatureBlock(); !sig.isEmpty()) {
+        setBody(sig);
+        snapshot();
+    }
     emit ready();
 }
 
@@ -213,6 +268,8 @@ void Composer::initNewTo(const QString &accountId, const QString &to)
 {
     reset(QStringLiteral("new"), accountId);
     setTo(to);
+    if (const QString sig = signatureBlock(); !sig.isEmpty())
+        setBody(sig);
     snapshot();
     emit ready();
 }
@@ -258,8 +315,9 @@ void Composer::loadOriginal(const QString &messageId, bool forward, bool replyAl
                 for (const auto &a : d.to_addresses())
                     to << s(a);
                 setSubject(forwardSubject(subj));
-                setBody(QStringLiteral("\n\n---------- Forwarded message ----------\nFrom: %1\nDate: %2\nSubject: %3\nTo: %4\n\n")
-                            .arg(sender, date, subj, to.join(QStringLiteral(", ")))
+                setBody(signatureBlock()
+                        + QStringLiteral("\n\n---------- Forwarded message ----------\nFrom: %1\nDate: %2\nSubject: %3\nTo: %4\n\n")
+                              .arg(sender, date, subj, to.join(QStringLiteral(", ")))
                         + orig);
                 for (const auto &a : d.attachments()) {
                     if (a.inline_())
@@ -301,7 +359,7 @@ void Composer::loadOriginal(const QString &messageId, bool forward, bool replyAl
                     }
                     setCc(ccList.join(QStringLiteral(", ")));
                 }
-                setBody(QStringLiteral("\n\nOn %1, %2 wrote:\n").arg(date, sender) + quoteText(orig) + QLatin1Char('\n'));
+                setBody(signatureBlock() + QStringLiteral("\n\nOn %1, %2 wrote:\n").arg(date, sender) + quoteText(orig) + QLatin1Char('\n'));
             }
             snapshot();
             emit ready();
@@ -397,6 +455,8 @@ void Composer::send()
     for (const QString &a : bcc) req.add_bcc(a.toStdString());
     req.set_subject(m_subject.toStdString());
     req.set_text_body(m_body.toStdString());
+    if (!m_htmlBody.isEmpty())
+        req.set_html_body(m_htmlBody.toStdString());
     req.set_reply_to_id(m_replyToId.toStdString());
     req.set_forward_of_id(m_forwardOfId.toStdString());
 

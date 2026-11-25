@@ -29,6 +29,7 @@ const (
 	MailandService_GetAttachment_FullMethodName         = "/mailand.v1.MailandService/GetAttachment"
 	MailandService_SearchMessages_FullMethodName        = "/mailand.v1.MailandService/SearchMessages"
 	MailandService_SetMessageFlags_FullMethodName       = "/mailand.v1.MailandService/SetMessageFlags"
+	MailandService_ArchiveMessages_FullMethodName       = "/mailand.v1.MailandService/ArchiveMessages"
 	MailandService_SendMessage_FullMethodName           = "/mailand.v1.MailandService/SendMessage"
 	MailandService_TriggerSync_FullMethodName           = "/mailand.v1.MailandService/TriggerSync"
 	MailandService_ListCalendars_FullMethodName         = "/mailand.v1.MailandService/ListCalendars"
@@ -54,6 +55,7 @@ type MailandServiceClient interface {
 	GetAttachment(ctx context.Context, in *AttachmentRequest, opts ...grpc.CallOption) (*AttachmentData, error)
 	SearchMessages(ctx context.Context, in *SearchRequest, opts ...grpc.CallOption) (*MessageHeaderList, error)
 	SetMessageFlags(ctx context.Context, in *SetFlagsRequest, opts ...grpc.CallOption) (*Empty, error)
+	ArchiveMessages(ctx context.Context, in *ArchiveRequest, opts ...grpc.CallOption) (*Empty, error)
 	SendMessage(ctx context.Context, in *SendMessageRequest, opts ...grpc.CallOption) (*SendMessageResponse, error)
 	TriggerSync(ctx context.Context, in *AccountRequest, opts ...grpc.CallOption) (*Empty, error)
 	// Calendars & Contacts (read-only, synced from CalDAV/CardDAV)
@@ -145,6 +147,16 @@ func (c *mailandServiceClient) SetMessageFlags(ctx context.Context, in *SetFlags
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Empty)
 	err := c.cc.Invoke(ctx, MailandService_SetMessageFlags_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *mailandServiceClient) ArchiveMessages(ctx context.Context, in *ArchiveRequest, opts ...grpc.CallOption) (*Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Empty)
+	err := c.cc.Invoke(ctx, MailandService_ArchiveMessages_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -273,6 +285,7 @@ type MailandServiceServer interface {
 	GetAttachment(context.Context, *AttachmentRequest) (*AttachmentData, error)
 	SearchMessages(context.Context, *SearchRequest) (*MessageHeaderList, error)
 	SetMessageFlags(context.Context, *SetFlagsRequest) (*Empty, error)
+	ArchiveMessages(context.Context, *ArchiveRequest) (*Empty, error)
 	SendMessage(context.Context, *SendMessageRequest) (*SendMessageResponse, error)
 	TriggerSync(context.Context, *AccountRequest) (*Empty, error)
 	// Calendars & Contacts (read-only, synced from CalDAV/CardDAV)
@@ -320,6 +333,9 @@ func (UnimplementedMailandServiceServer) SearchMessages(context.Context, *Search
 }
 func (UnimplementedMailandServiceServer) SetMessageFlags(context.Context, *SetFlagsRequest) (*Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method SetMessageFlags not implemented")
+}
+func (UnimplementedMailandServiceServer) ArchiveMessages(context.Context, *ArchiveRequest) (*Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method ArchiveMessages not implemented")
 }
 func (UnimplementedMailandServiceServer) SendMessage(context.Context, *SendMessageRequest) (*SendMessageResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SendMessage not implemented")
@@ -494,6 +510,24 @@ func _MailandService_SetMessageFlags_Handler(srv interface{}, ctx context.Contex
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(MailandServiceServer).SetMessageFlags(ctx, req.(*SetFlagsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _MailandService_ArchiveMessages_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ArchiveRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MailandServiceServer).ArchiveMessages(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MailandService_ArchiveMessages_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MailandServiceServer).ArchiveMessages(ctx, req.(*ArchiveRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -705,6 +739,10 @@ var MailandService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SetMessageFlags",
 			Handler:    _MailandService_SetMessageFlags_Handler,
+		},
+		{
+			MethodName: "ArchiveMessages",
+			Handler:    _MailandService_ArchiveMessages_Handler,
 		},
 		{
 			MethodName: "SendMessage",

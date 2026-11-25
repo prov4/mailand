@@ -115,6 +115,7 @@ func (m *Manager) Start(ctx context.Context) error {
 			ID: a.ID, Name: a.Name, Email: a.Email, IMAPHost: a.IMAPHost, IMAPPort: a.IMAPPort,
 			SMTPHost: a.SMTPHost, SMTPPort: a.SMTPPort, AuthType: a.Auth,
 			CalDAVURL: a.CalDAVURL, CardDAVURL: a.CardDAVURL,
+			Signature: a.Signature, SignatureHTML: a.SignatureHTML, SignatureImage: a.SignatureImage,
 		}); err != nil {
 			return fmt.Errorf("upsert account %q: %w", a.ID, err)
 		}

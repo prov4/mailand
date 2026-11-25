@@ -100,6 +100,9 @@ func (o *OfflineSender) Send(ctx context.Context, req Request) (string, error) {
 		_ = os.Remove(blob)
 		return "", err
 	}
+	if req.ReplyToID != "" {
+		_ = o.st.SetAnswered(ctx, req.ReplyToID)
+	}
 	if o.notify != nil {
 		o.notify(acct.ID, source)
 	}

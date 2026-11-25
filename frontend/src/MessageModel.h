@@ -16,6 +16,7 @@ class MessageModel : public QAbstractListModel
     Q_PROPERTY(QString folderId READ folderId WRITE setFolderId NOTIFY folderIdChanged FINAL)
     Q_PROPERTY(QString accountId READ accountId WRITE setAccountId NOTIFY accountIdChanged FINAL)
     Q_PROPERTY(QString searchQuery READ searchQuery WRITE setSearchQuery NOTIFY searchQueryChanged FINAL)
+    Q_PROPERTY(bool unreadOnly READ unreadOnly WRITE setUnreadOnly NOTIFY unreadOnlyChanged FINAL)
     Q_PROPERTY(bool loading READ loading NOTIFY loadingChanged FINAL)
     Q_PROPERTY(int totalCount READ totalCount NOTIFY totalCountChanged FINAL)
     Q_PROPERTY(int count READ count NOTIFY countChanged FINAL)
@@ -31,6 +32,7 @@ public:
         DateTextRole,
         IsReadRole,
         IsFlaggedRole,
+        IsAnsweredRole,
         HasAttachmentsRole,
         SnippetRole,
         SnippetRichRole,
@@ -39,7 +41,7 @@ public:
     struct Item {
         QString id, subject, fromName, fromAddress, snippetRaw;
         qint64 ts = 0;
-        bool isRead = false, isFlagged = false, hasAttachments = false;
+        bool isRead = false, isFlagged = false, isAnswered = false, hasAttachments = false;
         bool sameAs(const Item &o) const;
     };
 
@@ -57,6 +59,8 @@ public:
     void setAccountId(const QString &id);
     QString searchQuery() const { return m_query; }
     void setSearchQuery(const QString &q);
+    bool unreadOnly() const { return m_unreadOnly; }
+    void setUnreadOnly(bool on);
     bool loading() const { return m_loading; }
     int totalCount() const { return m_total; }
     int count() const { return int(m_items.size()); }
@@ -67,11 +71,13 @@ public:
     Q_INVOKABLE void setRead(int row, bool read);
     Q_INVOKABLE void toggleRead(int row);
     Q_INVOKABLE void toggleFlagged(int row);
+    Q_INVOKABLE void archive(int row);
 
 signals:
     void folderIdChanged();
     void accountIdChanged();
     void searchQueryChanged();
+    void unreadOnlyChanged();
     void loadingChanged();
     void totalCountChanged();
     void countChanged();
@@ -90,6 +96,7 @@ private:
     QString m_folderId, m_accountId, m_query;
     std::vector<Item> m_items;
     int m_total = 0;
+    bool m_unreadOnly = false;
     bool m_loading = false;
     int m_gen = 0;
     QTimer m_searchDebounce, m_eventDebounce;

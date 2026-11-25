@@ -65,6 +65,8 @@ qt_add_qml_module(mailand-ui
         src/ContactsModel.h src/ContactsModel.cpp
         src/MailWeb.h src/MailWeb.cpp
         src/Format.h src/Format.cpp
+        src/OmarchyTheme.h src/OmarchyTheme.cpp
+        src/RichTextHelper.h src/RichTextHelper.cpp
         src/SelfTest.h src/SelfTest.cpp
 )
 

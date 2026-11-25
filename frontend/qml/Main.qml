@@ -94,6 +94,33 @@ ApplicationWindow {
         if (row >= 0 && row < folderModel.count)
             selectFolder(folderModel.folderIdAt(row))
     }
+    function stepAccount(delta: int) {
+        const accs = Rpc.accounts
+        if (accs.length <= 1)
+            return
+        let idx = 0
+        for (let i = 0; i < accs.length; ++i) {
+            if (accs[i].id === accountId) {
+                idx = i
+                break
+            }
+        }
+        const next = (idx + delta + accs.length) % accs.length
+        selectAccount(accs[next].id)
+    }
+    function archiveCurrent() {
+        const row = listPane.currentRow()
+        if (row < 0)
+            return
+        readTimer.stop()
+        messageModel.archive(row)
+        if (messageModel.count > 0) {
+            listPane.selectRow(Math.min(row, messageModel.count - 1))
+        } else {
+            listPane.clearSelection()
+            messageView.messageId = ""
+        }
+    }
     function openMessage(id: string) {
         MailWeb.remoteAllowed = false
         messageView.messageId = id
@@ -212,6 +239,10 @@ ApplicationWindow {
                 messageModel.toggleFlagged(row)
         }
     }
+    Shortcut { sequence: "e"; enabled: root.mailKeys; onActivated: root.archiveCurrent() }
+    Shortcut { sequence: "u"; enabled: root.mailKeys; onActivated: messageModel.unreadOnly = !messageModel.unreadOnly }
+    Shortcut { sequence: "["; enabled: root.mailKeys; onActivated: root.stepAccount(-1) }
+    Shortcut { sequence: "]"; enabled: root.mailKeys; onActivated: root.stepAccount(1) }
     Shortcut { sequences: ["?", "Shift+?"]; enabled: root.keysEnabled; onActivated: help.open() }
     Shortcut { sequences: ["F5", "Ctrl+R"]; onActivated: Rpc.triggerSync("") } // = Send/Receive
     Shortcut { sequence: "Ctrl+1"; enabled: !composer.opened; onActivated: root.showView("mail") }

@@ -3,12 +3,12 @@ package store
 import "context"
 
 // FlagState is a message's flags as currently stored.
-type FlagState struct{ IsRead, IsFlagged bool }
+type FlagState struct{ IsRead, IsFlagged, IsAnswered bool }
 
 // FlagStates returns the stored flags of every message whose source mailbox is
 // folderID, keyed by UID. The IMAP sync uses it to apply only real changes.
 func (s *Store) FlagStates(ctx context.Context, folderID string) (map[uint32]FlagState, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT uid, is_read, is_flagged FROM messages WHERE folder_id=?`, folderID)
+	rows, err := s.db.QueryContext(ctx, `SELECT uid, is_read, is_flagged, is_answered FROM messages WHERE folder_id=?`, folderID)
 	if err != nil {
 		return nil, err
 	}
@@ -16,11 +16,11 @@ func (s *Store) FlagStates(ctx context.Context, folderID string) (map[uint32]Fla
 	out := map[uint32]FlagState{}
 	for rows.Next() {
 		var uid uint32
-		var rd, fl int
-		if err := rows.Scan(&uid, &rd, &fl); err != nil {
+		var rd, fl, ans int
+		if err := rows.Scan(&uid, &rd, &fl, &ans); err != nil {
 			return nil, err
 		}
-		out[uid] = FlagState{rd != 0, fl != 0}
+		out[uid] = FlagState{rd != 0, fl != 0, ans != 0}
 	}
 	return out, rows.Err()
 }

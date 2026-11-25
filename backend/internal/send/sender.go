@@ -40,7 +40,8 @@ type Sender struct {
 	log  *slog.Logger
 	base context.Context // long-lived: OAuth token sources keep using it for refreshes
 
-	triggerSync func(accountID string) error // may be nil
+	triggerSync  func(accountID string) error                  // may be nil
+	markAnswered func(ctx context.Context, msgID string) error // may be nil
 
 	tsMu sync.Mutex
 	ts   map[string]oauth2.TokenSource
@@ -63,6 +64,12 @@ func NewSender(base context.Context, cfg *config.Config, st *store.Store, trigge
 		return auth.TokenSource(ctx, s.cfg, a)
 	}
 	return s
+}
+
+// SetMarkAnswered registers a callback to set the IMAP \Answered flag on the
+// original message after a reply is sent.
+func (s *Sender) SetMarkAnswered(fn func(ctx context.Context, msgID string) error) {
+	s.markAnswered = fn
 }
 
 // Send composes and delivers req and returns the Message-ID (no angle brackets).
@@ -93,6 +100,11 @@ func (s *Sender) Send(ctx context.Context, req Request) (string, error) {
 		if err := s.appendSent(ctx, acct, b.Raw); err != nil {
 			// The mail is out; failing the RPC would invite a duplicate send.
 			s.log.Warn("could not save copy to Sent", "account", acct.ID, "err", err)
+		}
+	}
+	if req.ReplyToID != "" && s.markAnswered != nil {
+		if err := s.markAnswered(ctx, req.ReplyToID); err != nil {
+			s.log.Warn("could not mark original message answered", "account", acct.ID, "reply_to", req.ReplyToID, "err", err)
 		}
 	}
 	if s.triggerSync != nil {

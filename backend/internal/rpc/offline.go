@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"mailand/backend/internal/dav"
@@ -43,6 +44,39 @@ func (o *OfflineSyncer) SetFlags(ctx context.Context, ids []string, isRead, isFl
 	}
 	for _, acc := range order {
 		o.broker.Publish(&pb.DaemonEvent{Type: pb.DaemonEvent_FLAGS_UPDATED, AccountId: acc})
+	}
+	return nil
+}
+
+// ArchiveMessages removes the message's INBOX membership in the store and
+// publishes FLAGS_UPDATED.
+func (o *OfflineSyncer) ArchiveMessages(ctx context.Context, ids []string) error {
+	accounts := map[string]bool{}
+	var order []string
+	for _, id := range ids {
+		m, err := o.st.GetMessage(ctx, id)
+		if err != nil {
+			continue
+		}
+		folders, err := o.st.ListFolders(ctx, m.AccountID)
+		if err != nil {
+			return err
+		}
+		for _, f := range folders {
+			if f.SpecialUse == `\Inbox` || strings.EqualFold(f.Path, "INBOX") {
+				if err := o.st.RemoveMessageFromFolder(ctx, m.Seq, f.ID); err != nil {
+					return err
+				}
+				break
+			}
+		}
+		if !accounts[m.AccountID] {
+			accounts[m.AccountID] = true
+			order = append(order, m.AccountID)
+		}
+	}
+	for _, acc := range order {
+		o.broker.Publish(&pb.DaemonEvent{Type: pb.DaemonEvent_FLAGS_UPDATED, AccountId: acc, Detail: "labels"})
 	}
 	return nil
 }

@@ -55,13 +55,28 @@ Popup {
         else
             close()
     }
+    function sendNow() {
+        c.body = rt.plainText()
+        c.htmlBody = rt.htmlBody()
+        c.send()
+    }
     function focusStart() {
+        body.cursorPosition = 0
         if (c.mode === "reply" || c.mode === "replyAll") {
             body.forceActiveFocus()
-            body.cursorPosition = 0
         } else {
             toField.forceActiveFocus()
         }
+    }
+
+    property bool syncingBody: false
+
+    RichTextHelper {
+        id: rt
+        document: body.textDocument
+        cursorPosition: body.cursorPosition
+        selectionStart: body.selectionStart
+        selectionEnd: body.selectionEnd
     }
 
     Composer {
@@ -69,7 +84,15 @@ Popup {
         onReady: {
             if (c.cc.length > 0 || c.bcc.length > 0)
                 root.showCcBcc = true
+            root.syncingBody = true
+            rt.setPlainContent(c.body)
+            root.syncingBody = false
             root.focusStart()
+        }
+        onSignatureEnabledChanged: {
+            root.syncingBody = true
+            rt.setPlainContent(c.body)
+            root.syncingBody = false
         }
         onSent: {
             root.close()
@@ -96,13 +119,16 @@ Popup {
     Shortcut {
         sequences: ["Ctrl+Return", "Ctrl+Enter"]
         enabled: root.opened && !confirm.opened
-        onActivated: c.send()
+        onActivated: root.sendNow()
     }
     Shortcut {
         sequence: "Ctrl+Shift+A"
         enabled: root.opened && !confirm.opened && !root.busy
         onActivated: attachDialog.open()
     }
+    Shortcut { sequence: "Ctrl+B"; enabled: root.opened && body.activeFocus && !root.busy; onActivated: rt.toggleBold() }
+    Shortcut { sequence: "Ctrl+I"; enabled: root.opened && body.activeFocus && !root.busy; onActivated: rt.toggleItalic() }
+    Shortcut { sequence: "Ctrl+U"; enabled: root.opened && body.activeFocus && !root.busy; onActivated: rt.toggleUnderline() }
 
     FileDialog {
         id: attachDialog
@@ -192,6 +218,22 @@ Popup {
                 color: Theme.textMuted
                 font.pixelSize: Theme.fontBody
                 elide: Text.ElideRight
+            }
+            Label {
+                visible: c.hasSignature
+                text: "Signature:"
+                color: Theme.textMuted
+                font.pixelSize: Theme.fontSmall
+            }
+            ComposerSelect {
+                id: sigBox
+                visible: c.hasSignature
+                enabled: !root.busy
+                focusPolicy: Qt.NoFocus
+                implicitWidth: 100
+                model: ["Default", "None"]
+                currentIndex: c.signatureEnabled ? 0 : 1
+                onActivated: function(idx) { c.signatureEnabled = (idx === 0) }
             }
         }
 
@@ -325,32 +367,312 @@ Popup {
             }
         }
 
-        ScrollView {
-            id: bodyScroll
+        // Unified editor card: integrated formatting toolbar + body
+        Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            clip: true
-            background: Rectangle {
-                radius: Theme.radius
-                color: Theme.bg
-                border.color: body.activeFocus ? Theme.accent : Theme.border
-            }
-            TextArea {
-                id: body
-                text: c.body
-                onTextChanged: if (text !== c.body) c.body = text
-                enabled: !root.busy
-                wrapMode: TextEdit.Wrap
-                color: Theme.text
-                selectionColor: Theme.selection
-                selectedTextColor: Theme.text
-                font.family: Theme.monoFamily
-                font.pixelSize: Theme.fontBody
-                padding: Theme.s3
-                background: null
-                KeyNavigation.priority: KeyNavigation.BeforeItem
-                KeyNavigation.tab: toField
-                KeyNavigation.backtab: subjectField
+            radius: Theme.radius
+            color: Theme.bg
+            border.color: body.activeFocus ? Theme.accent : Theme.border
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 1
+                spacing: 0
+
+                // Toolbar strip
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: fmtBar.implicitHeight + 10
+                    color: Theme.surfaceAlt
+                    radius: Theme.radius - 1
+
+                    // Square off bottom corners so it meets the hairline cleanly
+                    Rectangle {
+                        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                        height: Theme.radius
+                        color: parent.color
+                    }
+
+                    Flow {
+                        id: fmtBar
+                        anchors {
+                            left: parent.left; right: parent.right
+                            verticalCenter: parent.verticalCenter
+                            leftMargin: 8; rightMargin: 8
+                        }
+                        spacing: 4
+
+                        component ToolSep: Item {
+                            implicitWidth: 9
+                            implicitHeight: 30
+                            Rectangle {
+                                anchors.centerIn: parent
+                                width: 1
+                                height: 18
+                                color: Theme.border
+                            }
+                        }
+
+                        component ToolBtn: Button {
+                            id: tb
+                            property bool active: false
+                            property string symbol: ""
+                            focusPolicy: Qt.NoFocus
+                            enabled: !root.busy
+                            implicitHeight: 30
+                            implicitWidth: 30
+                            padding: 0
+                            contentItem: Item {
+                                ComposerIcon {
+                                    anchors.centerIn: parent
+                                    kind: tb.symbol
+                                    ink: tb.active ? Theme.accent : (tb.hovered ? Theme.text : Theme.textMuted)
+                                    iconSize: 18
+                                }
+                            }
+                            background: Rectangle {
+                                radius: Theme.radius - 1
+                                color: tb.active
+                                       ? Qt.alpha(Theme.accent, 0.16)
+                                       : (tb.hovered ? Qt.alpha(Theme.text, 0.08) : "transparent")
+                            }
+                        }
+
+                        // Paragraph style
+                        ComposerSelect {
+                            id: styleBox
+                            enabled: !root.busy
+                            implicitWidth: 96
+                            readonly property var keys: ["body", "h1", "h2", "h3", "quote", "code"]
+                            model: ["Body", "Heading 1", "Heading 2", "Heading 3", "Quote", "Code"]
+                            currentIndex: Math.max(0, keys.indexOf(rt.blockStyle))
+                            onActivated: function(idx) { rt.setBlockStyle(keys[idx]); body.forceActiveFocus() }
+                        }
+
+                        // Font family
+                        ComposerSelect {
+                            id: fontBox
+                            enabled: !root.busy
+                            implicitWidth: 108
+                            model: ["Sans-serif", "Serif", "Monospace", "Helvetica", "Georgia", "Courier"]
+                            currentIndex: {
+                                const i = model.indexOf(rt.fontFamily)
+                                return i >= 0 ? i : 0
+                            }
+                            onActivated: function(idx) { rt.setFontFamily(model[idx]); body.forceActiveFocus() }
+                        }
+
+                        // Font size
+                        ComposerSelect {
+                            id: sizeBox
+                            enabled: !root.busy
+                            implicitWidth: 56
+                            readonly property var sizes: [11, 12, 14, 16, 18, 24, 32]
+                            model: ["11", "12", "14", "16", "18", "24", "32"]
+                            currentIndex: {
+                                const i = sizes.indexOf(rt.fontSize)
+                                return i >= 0 ? i : 2
+                            }
+                            onActivated: function(idx) { rt.setFontSize(sizes[idx]); body.forceActiveFocus() }
+                        }
+
+                        ToolSep {}
+
+                        // Text color swatch + clear formatting
+                        Row {
+                            spacing: 2
+                            Button {
+                                id: colorBtn
+                                enabled: !root.busy
+                                focusPolicy: Qt.NoFocus
+                                implicitWidth: 30
+                                implicitHeight: 30
+                                padding: 0
+                                onClicked: colorPop.open()
+                                ToolTip.visible: hovered; ToolTip.delay: 400; ToolTip.text: "Text color"
+                                background: Rectangle {
+                                    radius: Theme.radius - 1
+                                    color: colorBtn.hovered ? Qt.alpha(Theme.text, 0.08) : "transparent"
+                                    Rectangle {
+                                        anchors.centerIn: parent
+                                        width: 16; height: 16; radius: 8
+                                        color: rt.textColor.valid ? rt.textColor : Theme.text
+                                        border.color: Theme.border
+                                        border.width: 1
+                                    }
+                                }
+                                Popup {
+                                    id: colorPop
+                                    y: colorBtn.height + 6
+                                    padding: Theme.s2
+                                    background: Rectangle {
+                                        color: Theme.surface
+                                        border.color: Theme.border
+                                        radius: Theme.radius
+                                    }
+                                    contentItem: Row {
+                                        spacing: 6
+                                        Repeater {
+                                            model: ["", "#e6e9ef", "#1a1d23", "#d20f39", "#df8e1d", "#40a02b", "#1e66f5", "#8839ef", "#6c7086"]
+                                            delegate: Rectangle {
+                                                id: sw
+                                                required property string modelData
+                                                width: 20; height: 20; radius: 10
+                                                color: sw.modelData === "" ? Theme.bg : sw.modelData
+                                                border.color: Theme.border
+                                                Text {
+                                                    anchors.centerIn: parent
+                                                    visible: sw.modelData === ""
+                                                    text: "A"
+                                                    color: Theme.text
+                                                    font.pixelSize: 11
+                                                }
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onClicked: {
+                                                        rt.setTextColor(sw.modelData === "" ? Qt.rgba(0,0,0,0) : sw.modelData)
+                                                        colorPop.close()
+                                                        body.forceActiveFocus()
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            ToolBtn {
+                                symbol: "clear"
+                                ToolTip.visible: hovered; ToolTip.delay: 400; ToolTip.text: "Clear formatting"
+                                onClicked: { rt.clearFormatting(); body.forceActiveFocus() }
+                            }
+                        }
+
+                        ToolSep {}
+
+                        // Bold / Italic / Underline / Strike
+                        Row {
+                            spacing: 2
+                            ToolBtn {
+                                symbol: "bold"
+                                active: rt.bold
+                                ToolTip.visible: hovered; ToolTip.delay: 400; ToolTip.text: "Bold (Ctrl+B)"
+                                onClicked: { rt.toggleBold(); body.forceActiveFocus() }
+                            }
+                            ToolBtn {
+                                symbol: "italic"
+                                active: rt.italic
+                                ToolTip.visible: hovered; ToolTip.delay: 400; ToolTip.text: "Italic (Ctrl+I)"
+                                onClicked: { rt.toggleItalic(); body.forceActiveFocus() }
+                            }
+                            ToolBtn {
+                                symbol: "underline"
+                                active: rt.underline
+                                ToolTip.visible: hovered; ToolTip.delay: 400; ToolTip.text: "Underline (Ctrl+U)"
+                                onClicked: { rt.toggleUnderline(); body.forceActiveFocus() }
+                            }
+                            ToolBtn {
+                                symbol: "strike"
+                                active: rt.strikeout
+                                ToolTip.visible: hovered; ToolTip.delay: 400; ToolTip.text: "Strikethrough"
+                                onClicked: { rt.toggleStrikeout(); body.forceActiveFocus() }
+                            }
+                        }
+
+                        ToolSep {}
+
+                        // Alignment
+                        Row {
+                            spacing: 2
+                            ToolBtn {
+                                symbol: "left"
+                                active: rt.alignment === "left"
+                                ToolTip.visible: hovered; ToolTip.delay: 400; ToolTip.text: "Align left"
+                                onClicked: { rt.setAlignment("left"); body.forceActiveFocus() }
+                            }
+                            ToolBtn {
+                                symbol: "center"
+                                active: rt.alignment === "center"
+                                ToolTip.visible: hovered; ToolTip.delay: 400; ToolTip.text: "Align center"
+                                onClicked: { rt.setAlignment("center"); body.forceActiveFocus() }
+                            }
+                            ToolBtn {
+                                symbol: "right"
+                                active: rt.alignment === "right"
+                                ToolTip.visible: hovered; ToolTip.delay: 400; ToolTip.text: "Align right"
+                                onClicked: { rt.setAlignment("right"); body.forceActiveFocus() }
+                            }
+                        }
+
+                        ToolSep {}
+
+                        // Lists + Indent
+                        Row {
+                            spacing: 2
+                            ToolBtn {
+                                symbol: "bullets"
+                                active: rt.listStyle === "bullet"
+                                ToolTip.visible: hovered; ToolTip.delay: 400; ToolTip.text: "Bulleted list"
+                                onClicked: { rt.toggleList("bullet"); body.forceActiveFocus() }
+                            }
+                            ToolBtn {
+                                symbol: "numbers"
+                                active: rt.listStyle === "numbered"
+                                ToolTip.visible: hovered; ToolTip.delay: 400; ToolTip.text: "Numbered list"
+                                onClicked: { rt.toggleList("numbered"); body.forceActiveFocus() }
+                            }
+                            ToolBtn {
+                                symbol: "outdent"
+                                ToolTip.visible: hovered; ToolTip.delay: 400; ToolTip.text: "Decrease indent"
+                                onClicked: { rt.changeIndent(-1); body.forceActiveFocus() }
+                            }
+                            ToolBtn {
+                                symbol: "indent"
+                                ToolTip.visible: hovered; ToolTip.delay: 400; ToolTip.text: "Increase indent"
+                                onClicked: { rt.changeIndent(1); body.forceActiveFocus() }
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 1
+                    color: Theme.border
+                }
+
+                ScrollView {
+                    id: bodyScroll
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+                    background: null
+                    TextArea {
+                        id: body
+                        textFormat: TextEdit.RichText
+                        onTextChanged: {
+                            if (root.syncingBody)
+                                return
+                            const p = rt.plainText()
+                            if (p !== c.body)
+                                c.body = p
+                        }
+                        enabled: !root.busy
+                        wrapMode: TextEdit.Wrap
+                        color: Theme.text
+                        selectionColor: Theme.selection
+                        selectedTextColor: Theme.text
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontBody
+                        padding: Theme.s3
+                        background: null
+                        KeyNavigation.priority: KeyNavigation.BeforeItem
+                        KeyNavigation.tab: toField
+                        KeyNavigation.backtab: subjectField
+                    }
+                }
             }
         }
 
@@ -404,7 +726,7 @@ Popup {
                 text: c.sending ? "Sending…" : "Send"
                 enabled: !root.busy
                 focusPolicy: Qt.TabFocus
-                onClicked: c.send()
+                onClicked: root.sendNow()
                 contentItem: Label {
                     text: sendBtn.text
                     color: Theme.accentText

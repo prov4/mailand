@@ -19,6 +19,9 @@ class Composer : public QObject
     Q_PROPERTY(QString bcc READ bcc WRITE setBcc NOTIFY bccChanged FINAL)
     Q_PROPERTY(QString subject READ subject WRITE setSubject NOTIFY subjectChanged FINAL)
     Q_PROPERTY(QString body READ body WRITE setBody NOTIFY bodyChanged FINAL)
+    Q_PROPERTY(QString htmlBody READ htmlBody WRITE setHtmlBody NOTIFY htmlBodyChanged FINAL)
+    Q_PROPERTY(bool hasSignature READ hasSignature NOTIFY fromTextChanged FINAL)
+    Q_PROPERTY(bool signatureEnabled READ signatureEnabled WRITE setSignatureEnabled NOTIFY signatureEnabledChanged FINAL)
     Q_PROPERTY(QString mode READ mode NOTIFY modeChanged FINAL)
     Q_PROPERTY(bool sending READ sending NOTIFY sendingChanged FINAL)
     Q_PROPERTY(bool loading READ loading NOTIFY loadingChanged FINAL)
@@ -37,6 +40,9 @@ public:
     QString bcc() const { return m_bcc; }
     QString subject() const { return m_subject; }
     QString body() const { return m_body; }
+    QString htmlBody() const { return m_htmlBody; }
+    bool hasSignature() const { return !signatureBlock().isEmpty(); }
+    bool signatureEnabled() const { return m_signatureEnabled; }
     QString mode() const { return m_mode; }
     bool sending() const { return m_sending; }
     bool loading() const { return m_loading; }
@@ -52,6 +58,8 @@ public:
     void setBcc(const QString &v);
     void setSubject(const QString &v);
     void setBody(const QString &v);
+    void setHtmlBody(const QString &v);
+    void setSignatureEnabled(bool on);
 
     Q_INVOKABLE void initNew(const QString &accountId);
     // New message with To prefilled (from Contacts); not dirty until edited.
@@ -76,6 +84,8 @@ signals:
     void bccChanged();
     void subjectChanged();
     void bodyChanged();
+    void htmlBodyChanged();
+    void signatureEnabledChanged();
     void modeChanged();
     void sendingChanged();
     void loadingChanged();
@@ -96,13 +106,15 @@ private:
     void setLoading(bool l);
     void loadOriginal(const QString &messageId, bool forward, bool replyAll);
     QString ownEmail() const;
+    QString signatureBlock() const;
 
-    QString m_accountId, m_to, m_cc, m_bcc, m_subject, m_body, m_mode = QStringLiteral("new");
+    QString m_accountId, m_to, m_cc, m_bcc, m_subject, m_body, m_htmlBody, m_mode = QStringLiteral("new");
     QString m_error, m_replyToId, m_forwardOfId;
     QString m_i_to, m_i_cc, m_i_bcc, m_i_subject, m_i_body; // snapshot at init
     QVariantList m_attachments;
     QVariantList m_userAttachments;
     qint64 m_forwardAttachmentBytes = 0;
+    bool m_signatureEnabled = true;
     bool m_sending = false, m_loading = false, m_dirty = false;
     int m_gen = 0;
 };

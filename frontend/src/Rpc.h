@@ -70,15 +70,16 @@ public:
 
     // Typed async wrappers. `done` runs on the GUI thread, only if `ctx` (or this) is still alive.
     void listFolders(const QString &accountId, QObject *ctx, Done<mailand::v1::FolderList> done);
-    void listMessages(const QString &folderId, quint32 limit, quint32 offset, QObject *ctx,
-                      Done<mailand::v1::MessageHeaderList> done);
+    void listMessages(const QString &folderId, quint32 limit, quint32 offset, bool unreadOnly,
+                      QObject *ctx, Done<mailand::v1::MessageHeaderList> done);
     void searchMessages(const QString &query, const QString &accountId, quint32 limit,
-                        QObject *ctx, Done<mailand::v1::MessageHeaderList> done);
+                        bool unreadOnly, QObject *ctx, Done<mailand::v1::MessageHeaderList> done);
     void getMessage(const QString &messageId, QObject *ctx, Done<mailand::v1::MessageDetail> done);
     void getAttachment(const QString &messageId, const QString &attachmentId, QObject *ctx,
                        Done<mailand::v1::AttachmentData> done);
     void setFlags(const QString &messageId, std::optional<bool> isRead,
                   std::optional<bool> isFlagged, QObject *ctx, Done<mailand::v1::Empty> done);
+    void archiveMessage(const QString &messageId, QObject *ctx, Done<mailand::v1::Empty> done);
 
     void sendMessage(mailand::v1::SendMessageRequest req, QObject *ctx,
                      Done<mailand::v1::SendMessageResponse> done);
