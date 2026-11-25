@@ -260,3 +260,45 @@ func TestBuildForward(t *testing.T) {
 		t.Errorf("forward without blob: %v", err)
 	}
 }
+
+func TestBuildUserAttachments(t *testing.T) {
+	fx := newFixture(t)
+	bg := context.Background()
+	b, err := Build(bg, fx.st, fx.acct, Request{
+		AccountID: "acc",
+		To:        []string{"c@example.com"},
+		Subject:   "Report",
+		TextBody:  "attached",
+		Attachments: []Attachment{
+			{Filename: "notes.txt", MIMEType: "text/plain", Data: []byte("hello world")},
+			{Filename: "raw.bin", MIMEType: "bad mime type", Data: []byte{1, 2, 3}},
+		},
+	}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, p := parseRaw(t, b.Raw)
+	if len(p.Attachments) != 2 {
+		t.Fatalf("got %d attachments, want 2: %+v", len(p.Attachments), p.Attachments)
+	}
+	if p.Attachments[0].Filename != "notes.txt" || p.Attachments[0].MIMEType != "text/plain" {
+		t.Errorf("att 0: %+v", p.Attachments[0])
+	}
+	if p.Attachments[1].Filename != "raw.bin" || p.Attachments[1].MIMEType != "application/octet-stream" {
+		t.Errorf("att 1: %+v", p.Attachments[1])
+	}
+	data, _, err := mailpkg.ExtractPart(bytes.NewReader(b.Raw), p.Attachments[0].PartPath)
+	if err != nil || string(data) != "hello world" {
+		t.Errorf("att 0 data: %q %v", data, err)
+	}
+
+	// Oversized attachment rejected.
+	big := make([]byte, maxAttachmentTotal+1)
+	if _, err = Build(bg, fx.st, fx.acct, Request{
+		AccountID:   "acc",
+		To:          []string{"c@example.com"},
+		Attachments: []Attachment{{Filename: "huge.bin", Data: big}},
+	}, time.Now()); !errors.Is(err, ErrInvalid) {
+		t.Errorf("oversized attachment: got %v, want ErrInvalid", err)
+	}
+}

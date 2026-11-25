@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import Mailand
 
@@ -97,6 +98,18 @@ Popup {
         enabled: root.opened && !confirm.opened
         onActivated: c.send()
     }
+    Shortcut {
+        sequence: "Ctrl+Shift+A"
+        enabled: root.opened && !confirm.opened && !root.busy
+        onActivated: attachDialog.open()
+    }
+
+    FileDialog {
+        id: attachDialog
+        title: "Attach files"
+        fileMode: FileDialog.OpenFiles
+        onAccepted: c.addAttachments(selectedFiles)
+    }
 
     background: Rectangle {
         color: Theme.surface
@@ -148,8 +161,10 @@ Popup {
         }
     }
 
-    contentItem: ColumnLayout {
-        spacing: Theme.s2
+    contentItem: Item {
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: Theme.s2
 
         RowLayout {
             Layout.fillWidth: true
@@ -244,14 +259,14 @@ Popup {
             }
         }
 
-        // Forward attachments (read-only chips)
+        // Attachments (forwarded read-only chips + removable user-attached chips)
         Flow {
             Layout.fillWidth: true
             spacing: Theme.s2
-            visible: c.mode === "forward" && attachRepeater.count > 0
+            visible: (c.mode === "forward" && attachRepeater.count > 0) || userAttachRepeater.count > 0
             Repeater {
                 id: attachRepeater
-                model: c.forwardAttachments
+                model: c.mode === "forward" ? c.forwardAttachments : []
                 delegate: Rectangle {
                     id: chip
                     required property var modelData
@@ -266,6 +281,45 @@ Popup {
                         text: chip.modelData.filename + "  (" + chip.modelData.sizeText + ")"
                         color: Theme.text
                         font.pixelSize: Theme.fontSmall
+                    }
+                }
+            }
+            Repeater {
+                id: userAttachRepeater
+                model: c.attachments
+                delegate: Rectangle {
+                    id: userChip
+                    required property var modelData
+                    required property int index
+                    implicitWidth: userChipRow.implicitWidth + Theme.s3 + Theme.s2
+                    implicitHeight: userChipRow.implicitHeight + Theme.s2
+                    radius: Theme.radius
+                    color: Theme.surfaceAlt
+                    border.color: Theme.border
+                    RowLayout {
+                        id: userChipRow
+                        anchors.centerIn: parent
+                        spacing: Theme.s2
+                        Text {
+                            text: userChip.modelData.filename + "  (" + userChip.modelData.sizeText + ")"
+                            color: Theme.text
+                            font.pixelSize: Theme.fontSmall
+                        }
+                        Text {
+                            text: "×"
+                            color: removeArea.containsMouse ? Theme.danger : Theme.textMuted
+                            font.pixelSize: Theme.fontBody
+                            font.bold: true
+                            MouseArea {
+                                id: removeArea
+                                anchors.fill: parent
+                                anchors.margins: -4
+                                hoverEnabled: true
+                                enabled: !root.busy
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: c.removeAttachment(userChip.index)
+                            }
+                        }
                     }
                 }
             }
@@ -312,9 +366,31 @@ Popup {
         RowLayout {
             Layout.fillWidth: true
             spacing: Theme.s3
+            Button {
+                id: attachBtn
+                text: "Attach…"
+                enabled: !root.busy
+                focusPolicy: Qt.TabFocus
+                onClicked: attachDialog.open()
+                contentItem: Label {
+                    text: attachBtn.text
+                    color: Theme.text
+                    font.pixelSize: Theme.fontSmall
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+                background: Rectangle {
+                    implicitWidth: 76
+                    implicitHeight: 30
+                    radius: Theme.radius
+                    color: Theme.surfaceAlt
+                    opacity: attachBtn.enabled ? 1 : 0.5
+                    border.color: attachBtn.activeFocus ? Theme.accent : Theme.border
+                }
+            }
             Label {
                 Layout.fillWidth: true
-                text: "Ctrl+Enter to send · Esc to close"
+                text: "Ctrl+Enter to send · Ctrl+Shift+A attach · Esc to close"
                 color: Theme.textFaint
                 font.pixelSize: Theme.fontSmall
             }
@@ -344,6 +420,42 @@ Popup {
                     color: Theme.accent
                     opacity: sendBtn.enabled ? 1 : 0.5
                     border.color: sendBtn.activeFocus ? Theme.text : "transparent"
+                }
+            }
+        }
+        }
+
+        DropArea {
+            id: fileDrop
+            anchors.fill: parent
+            z: 100
+            enabled: !root.busy
+            onEntered: function(drag) {
+                if (drag.hasUrls)
+                    drag.accept(Qt.CopyAction)
+                else
+                    drag.accepted = false
+            }
+            onDropped: function(drop) {
+                if (drop.hasUrls) {
+                    drop.accept(Qt.CopyAction)
+                    c.addAttachments(drop.urls)
+                }
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                visible: fileDrop.containsDrag
+                radius: Theme.radiusLarge
+                color: Qt.rgba(0, 0, 0, 0.55)
+                border.color: Theme.accent
+                border.width: 2
+                Label {
+                    anchors.centerIn: parent
+                    text: "Drop files to attach"
+                    color: Theme.text
+                    font.pixelSize: Theme.fontTitle
+                    font.bold: true
                 }
             }
         }

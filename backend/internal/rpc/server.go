@@ -382,6 +382,16 @@ func (s *Server) SendMessage(ctx context.Context, req *pb.SendMessageRequest) (*
 		AccountID: req.AccountId, To: req.To, Cc: req.Cc, Bcc: req.Bcc, Subject: req.Subject,
 		TextBody: req.TextBody, InReplyTo: req.InReplyTo, ReplyToID: req.ReplyToId, ForwardOfID: req.ForwardOfId,
 	}
+	if len(req.Attachments) > 0 {
+		r.Attachments = make([]send.Attachment, len(req.Attachments))
+		for i, a := range req.Attachments {
+			r.Attachments[i] = send.Attachment{
+				Filename: a.Filename,
+				MIMEType: a.MimeType,
+				Data:     a.Data,
+			}
+		}
+	}
 	if err := send.Validate(r); err != nil {
 		return nil, s.mapSendErr(err)
 	}

@@ -1,7 +1,9 @@
 #pragma once
 
+#include <QList>
 #include <QObject>
 #include <QString>
+#include <QUrl>
 #include <QVariantList>
 #include <QtQml/qqmlregistration.h>
 
@@ -23,6 +25,7 @@ class Composer : public QObject
     Q_PROPERTY(bool dirty READ dirty NOTIFY dirtyChanged FINAL)
     Q_PROPERTY(QString errorText READ errorText NOTIFY errorTextChanged FINAL)
     Q_PROPERTY(QVariant forwardAttachments READ forwardAttachments NOTIFY forwardAttachmentsChanged FINAL)
+    Q_PROPERTY(QVariant attachments READ attachments NOTIFY attachmentsChanged FINAL)
     Q_PROPERTY(QString fromText READ fromText NOTIFY fromTextChanged FINAL)
 
 public:
@@ -40,6 +43,7 @@ public:
     bool dirty() const { return m_dirty; }
     QString errorText() const { return m_error; }
     QVariant forwardAttachments() const { return m_attachments; }
+    QVariant attachments() const { return m_userAttachments; }
     QString fromText() const;
 
     void setAccountId(const QString &v);
@@ -54,6 +58,8 @@ public:
     Q_INVOKABLE void initNewTo(const QString &accountId, const QString &to);
     Q_INVOKABLE void initReply(const QString &messageId, bool replyAll);
     Q_INVOKABLE void initForward(const QString &messageId);
+    Q_INVOKABLE void addAttachments(const QList<QUrl> &urls);
+    Q_INVOKABLE void removeAttachment(int index);
     Q_INVOKABLE void send();
 
     // Pure helpers (also used by the selftest).
@@ -76,6 +82,7 @@ signals:
     void dirtyChanged();
     void errorTextChanged();
     void forwardAttachmentsChanged();
+    void attachmentsChanged();
     void fromTextChanged();
     void ready();
     void sent();
@@ -94,6 +101,8 @@ private:
     QString m_error, m_replyToId, m_forwardOfId;
     QString m_i_to, m_i_cc, m_i_bcc, m_i_subject, m_i_body; // snapshot at init
     QVariantList m_attachments;
+    QVariantList m_userAttachments;
+    qint64 m_forwardAttachmentBytes = 0;
     bool m_sending = false, m_loading = false, m_dirty = false;
     int m_gen = 0;
 };

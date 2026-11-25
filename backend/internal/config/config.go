@@ -24,8 +24,62 @@ const (
 
 // Config is the parsed config.toml.
 type Config struct {
-	Google   *Google   `toml:"google"`
-	Accounts []Account `toml:"account"`
+	Google        *Google        `toml:"google"`
+	Notifications *Notifications `toml:"notifications"`
+	Accounts      []Account      `toml:"account"`
+}
+
+// Notifications configures desktop notifications (org.freedesktop.Notifications).
+// When omitted, notifications are enabled for both new INBOX mail and upcoming
+// calendar events (10 minutes before start, skipping all-day events).
+type Notifications struct {
+	Enabled         *bool         `toml:"enabled"`
+	Mail            *bool         `toml:"mail"`
+	Calendar        *bool         `toml:"calendar"`
+	CalendarLeadStr string        `toml:"calendar_lead_time"`
+	CalendarLead    time.Duration `toml:"-"`
+	AllDay          bool          `toml:"all_day"`
+}
+
+// ResolvedNotifications holds the effective notification settings with defaults applied.
+type ResolvedNotifications struct {
+	Enabled      bool
+	Mail         bool
+	Calendar     bool
+	CalendarLead time.Duration
+	AllDay       bool
+}
+
+// DefaultCalendarLeadTime is how far ahead upcoming meeting notifications fire.
+const DefaultCalendarLeadTime = 10 * time.Minute
+
+// NotificationsConfig returns the effective notification settings, applying defaults
+// when [notifications] or individual fields are omitted.
+func (c *Config) NotificationsConfig() ResolvedNotifications {
+	r := ResolvedNotifications{
+		Enabled:      true,
+		Mail:         true,
+		Calendar:     true,
+		CalendarLead: DefaultCalendarLeadTime,
+	}
+	if c == nil || c.Notifications == nil {
+		return r
+	}
+	n := c.Notifications
+	if n.Enabled != nil {
+		r.Enabled = *n.Enabled
+	}
+	if n.Mail != nil {
+		r.Mail = *n.Mail
+	}
+	if n.Calendar != nil {
+		r.Calendar = *n.Calendar
+	}
+	if n.CalendarLead > 0 {
+		r.CalendarLead = n.CalendarLead
+	}
+	r.AllDay = n.AllDay
+	return r
 }
 
 // Google holds the user's own Desktop-app OAuth client. Google does not treat
@@ -199,6 +253,13 @@ func (c *Config) validate() error {
 	if needGoogle && (c.Google == nil || c.Google.ClientID == "") {
 		return errors.New("an account uses oauth2_google but [google] client_id is not set")
 	}
+	if c.Notifications != nil && c.Notifications.CalendarLeadStr != "" {
+		d, err := time.ParseDuration(c.Notifications.CalendarLeadStr)
+		if err != nil || d <= 0 {
+			return fmt.Errorf("notifications: calendar_lead_time %q is not a positive duration like \"10m\"", c.Notifications.CalendarLeadStr)
+		}
+		c.Notifications.CalendarLead = d
+	}
 	return nil
 }
 
@@ -276,6 +337,14 @@ const ExampleConfig = `# mailand config. Secrets (passwords, refresh tokens) are
 [google]
 client_id = "1234567890-abc.apps.googleusercontent.com"
 client_secret = "GOCSPX-..."
+
+# Desktop notifications (org.freedesktop.Notifications). Enabled by default.
+# [notifications]
+# enabled = true
+# mail = true
+# calendar = true
+# calendar_lead_time = "10m"
+# all_day = false
 
 [[account]]
 id = "gmail"                  # stable id: [a-z0-9-_]+, unique

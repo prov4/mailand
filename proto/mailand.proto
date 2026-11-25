@@ -139,6 +139,12 @@ message SetFlagsRequest {
   optional bool is_flagged = 3;
 }
 
+message SendAttachment {
+  string filename = 1;
+  string mime_type = 2;
+  bytes data = 3;
+}
+
 // Address strings in to/cc/bcc are "Name <addr>" or "addr". Errors: InvalidArgument for
 // unknown account / bad or empty recipients / recipient rejected by the SMTP server,
 // Unauthenticated (message "reauth_required" when the user must log in again),
@@ -156,6 +162,7 @@ message SendMessageRequest {
                              // (original Message-ID) and References (original References + Message-ID)
   string forward_of_id = 10; // mailand message id being forwarded: the server attaches the
                              // original's non-inline attachments
+  repeated SendAttachment attachments = 11; // user-attached files
 }
 
 message SendMessageResponse {

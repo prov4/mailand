@@ -87,7 +87,7 @@ func (x DaemonEvent_Type) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use DaemonEvent_Type.Descriptor instead.
 func (DaemonEvent_Type) EnumDescriptor() ([]byte, []int) {
-	return file_mailand_proto_rawDescGZIP(), []int{18, 0}
+	return file_mailand_proto_rawDescGZIP(), []int{19, 0}
 }
 
 type Empty struct {
@@ -1091,6 +1091,66 @@ func (x *SetFlagsRequest) GetIsFlagged() bool {
 	return false
 }
 
+type SendAttachment struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Filename      string                 `protobuf:"bytes,1,opt,name=filename,proto3" json:"filename,omitempty"`
+	MimeType      string                 `protobuf:"bytes,2,opt,name=mime_type,json=mimeType,proto3" json:"mime_type,omitempty"`
+	Data          []byte                 `protobuf:"bytes,3,opt,name=data,proto3" json:"data,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SendAttachment) Reset() {
+	*x = SendAttachment{}
+	mi := &file_mailand_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SendAttachment) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SendAttachment) ProtoMessage() {}
+
+func (x *SendAttachment) ProtoReflect() protoreflect.Message {
+	mi := &file_mailand_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SendAttachment.ProtoReflect.Descriptor instead.
+func (*SendAttachment) Descriptor() ([]byte, []int) {
+	return file_mailand_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *SendAttachment) GetFilename() string {
+	if x != nil {
+		return x.Filename
+	}
+	return ""
+}
+
+func (x *SendAttachment) GetMimeType() string {
+	if x != nil {
+		return x.MimeType
+	}
+	return ""
+}
+
+func (x *SendAttachment) GetData() []byte {
+	if x != nil {
+		return x.Data
+	}
+	return nil
+}
+
 // Address strings in to/cc/bcc are "Name <addr>" or "addr". Errors: InvalidArgument for
 // unknown account / bad or empty recipients / recipient rejected by the SMTP server,
 // Unauthenticated (message "reauth_required" when the user must log in again),
@@ -1107,14 +1167,16 @@ type SendMessageRequest struct {
 	Bcc       []string               `protobuf:"bytes,8,rep,name=bcc,proto3" json:"bcc,omitempty"`                                // envelope only, never written into headers
 	ReplyToId string                 `protobuf:"bytes,9,opt,name=reply_to_id,json=replyToId,proto3" json:"reply_to_id,omitempty"` // mailand message id being replied to: the server derives In-Reply-To
 	// (original Message-ID) and References (original References + Message-ID)
-	ForwardOfId   string `protobuf:"bytes,10,opt,name=forward_of_id,json=forwardOfId,proto3" json:"forward_of_id,omitempty"` // mailand message id being forwarded: the server attaches the
+	ForwardOfId string `protobuf:"bytes,10,opt,name=forward_of_id,json=forwardOfId,proto3" json:"forward_of_id,omitempty"` // mailand message id being forwarded: the server attaches the
+	// original's non-inline attachments
+	Attachments   []*SendAttachment `protobuf:"bytes,11,rep,name=attachments,proto3" json:"attachments,omitempty"` // user-attached files
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SendMessageRequest) Reset() {
 	*x = SendMessageRequest{}
-	mi := &file_mailand_proto_msgTypes[16]
+	mi := &file_mailand_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1126,7 +1188,7 @@ func (x *SendMessageRequest) String() string {
 func (*SendMessageRequest) ProtoMessage() {}
 
 func (x *SendMessageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mailand_proto_msgTypes[16]
+	mi := &file_mailand_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1139,7 +1201,7 @@ func (x *SendMessageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendMessageRequest.ProtoReflect.Descriptor instead.
 func (*SendMessageRequest) Descriptor() ([]byte, []int) {
-	return file_mailand_proto_rawDescGZIP(), []int{16}
+	return file_mailand_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *SendMessageRequest) GetAccountId() string {
@@ -1212,6 +1274,13 @@ func (x *SendMessageRequest) GetForwardOfId() string {
 	return ""
 }
 
+func (x *SendMessageRequest) GetAttachments() []*SendAttachment {
+	if x != nil {
+		return x.Attachments
+	}
+	return nil
+}
+
 type SendMessageResponse struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	MessageIdHeader string                 `protobuf:"bytes,1,opt,name=message_id_header,json=messageIdHeader,proto3" json:"message_id_header,omitempty"` // Message-ID of the sent mail, without angle brackets
@@ -1221,7 +1290,7 @@ type SendMessageResponse struct {
 
 func (x *SendMessageResponse) Reset() {
 	*x = SendMessageResponse{}
-	mi := &file_mailand_proto_msgTypes[17]
+	mi := &file_mailand_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1233,7 +1302,7 @@ func (x *SendMessageResponse) String() string {
 func (*SendMessageResponse) ProtoMessage() {}
 
 func (x *SendMessageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_mailand_proto_msgTypes[17]
+	mi := &file_mailand_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1246,7 +1315,7 @@ func (x *SendMessageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendMessageResponse.ProtoReflect.Descriptor instead.
 func (*SendMessageResponse) Descriptor() ([]byte, []int) {
-	return file_mailand_proto_rawDescGZIP(), []int{17}
+	return file_mailand_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *SendMessageResponse) GetMessageIdHeader() string {
@@ -1268,7 +1337,7 @@ type DaemonEvent struct {
 
 func (x *DaemonEvent) Reset() {
 	*x = DaemonEvent{}
-	mi := &file_mailand_proto_msgTypes[18]
+	mi := &file_mailand_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1280,7 +1349,7 @@ func (x *DaemonEvent) String() string {
 func (*DaemonEvent) ProtoMessage() {}
 
 func (x *DaemonEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_mailand_proto_msgTypes[18]
+	mi := &file_mailand_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1293,7 +1362,7 @@ func (x *DaemonEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DaemonEvent.ProtoReflect.Descriptor instead.
 func (*DaemonEvent) Descriptor() ([]byte, []int) {
-	return file_mailand_proto_rawDescGZIP(), []int{18}
+	return file_mailand_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *DaemonEvent) GetType() DaemonEvent_Type {
@@ -1337,7 +1406,7 @@ type Calendar struct {
 
 func (x *Calendar) Reset() {
 	*x = Calendar{}
-	mi := &file_mailand_proto_msgTypes[19]
+	mi := &file_mailand_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1349,7 +1418,7 @@ func (x *Calendar) String() string {
 func (*Calendar) ProtoMessage() {}
 
 func (x *Calendar) ProtoReflect() protoreflect.Message {
-	mi := &file_mailand_proto_msgTypes[19]
+	mi := &file_mailand_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1362,7 +1431,7 @@ func (x *Calendar) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Calendar.ProtoReflect.Descriptor instead.
 func (*Calendar) Descriptor() ([]byte, []int) {
-	return file_mailand_proto_rawDescGZIP(), []int{19}
+	return file_mailand_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *Calendar) GetId() string {
@@ -1409,7 +1478,7 @@ type CalendarList struct {
 
 func (x *CalendarList) Reset() {
 	*x = CalendarList{}
-	mi := &file_mailand_proto_msgTypes[20]
+	mi := &file_mailand_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1421,7 +1490,7 @@ func (x *CalendarList) String() string {
 func (*CalendarList) ProtoMessage() {}
 
 func (x *CalendarList) ProtoReflect() protoreflect.Message {
-	mi := &file_mailand_proto_msgTypes[20]
+	mi := &file_mailand_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1434,7 +1503,7 @@ func (x *CalendarList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CalendarList.ProtoReflect.Descriptor instead.
 func (*CalendarList) Descriptor() ([]byte, []int) {
-	return file_mailand_proto_rawDescGZIP(), []int{20}
+	return file_mailand_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *CalendarList) GetCalendars() []*Calendar {
@@ -1455,7 +1524,7 @@ type ListEventsRequest struct {
 
 func (x *ListEventsRequest) Reset() {
 	*x = ListEventsRequest{}
-	mi := &file_mailand_proto_msgTypes[21]
+	mi := &file_mailand_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1467,7 +1536,7 @@ func (x *ListEventsRequest) String() string {
 func (*ListEventsRequest) ProtoMessage() {}
 
 func (x *ListEventsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mailand_proto_msgTypes[21]
+	mi := &file_mailand_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1480,7 +1549,7 @@ func (x *ListEventsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListEventsRequest.ProtoReflect.Descriptor instead.
 func (*ListEventsRequest) Descriptor() ([]byte, []int) {
-	return file_mailand_proto_rawDescGZIP(), []int{21}
+	return file_mailand_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *ListEventsRequest) GetStartUnix() int64 {
@@ -1529,7 +1598,7 @@ type CalendarEvent struct {
 
 func (x *CalendarEvent) Reset() {
 	*x = CalendarEvent{}
-	mi := &file_mailand_proto_msgTypes[22]
+	mi := &file_mailand_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1541,7 +1610,7 @@ func (x *CalendarEvent) String() string {
 func (*CalendarEvent) ProtoMessage() {}
 
 func (x *CalendarEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_mailand_proto_msgTypes[22]
+	mi := &file_mailand_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1554,7 +1623,7 @@ func (x *CalendarEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CalendarEvent.ProtoReflect.Descriptor instead.
 func (*CalendarEvent) Descriptor() ([]byte, []int) {
-	return file_mailand_proto_rawDescGZIP(), []int{22}
+	return file_mailand_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *CalendarEvent) GetId() string {
@@ -1682,7 +1751,7 @@ type Attendee struct {
 
 func (x *Attendee) Reset() {
 	*x = Attendee{}
-	mi := &file_mailand_proto_msgTypes[23]
+	mi := &file_mailand_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1694,7 +1763,7 @@ func (x *Attendee) String() string {
 func (*Attendee) ProtoMessage() {}
 
 func (x *Attendee) ProtoReflect() protoreflect.Message {
-	mi := &file_mailand_proto_msgTypes[23]
+	mi := &file_mailand_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1707,7 +1776,7 @@ func (x *Attendee) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Attendee.ProtoReflect.Descriptor instead.
 func (*Attendee) Descriptor() ([]byte, []int) {
-	return file_mailand_proto_rawDescGZIP(), []int{23}
+	return file_mailand_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *Attendee) GetName() string {
@@ -1755,7 +1824,7 @@ type RespondToEventRequest struct {
 
 func (x *RespondToEventRequest) Reset() {
 	*x = RespondToEventRequest{}
-	mi := &file_mailand_proto_msgTypes[24]
+	mi := &file_mailand_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1767,7 +1836,7 @@ func (x *RespondToEventRequest) String() string {
 func (*RespondToEventRequest) ProtoMessage() {}
 
 func (x *RespondToEventRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mailand_proto_msgTypes[24]
+	mi := &file_mailand_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1780,7 +1849,7 @@ func (x *RespondToEventRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RespondToEventRequest.ProtoReflect.Descriptor instead.
 func (*RespondToEventRequest) Descriptor() ([]byte, []int) {
-	return file_mailand_proto_rawDescGZIP(), []int{24}
+	return file_mailand_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *RespondToEventRequest) GetEventId() string {
@@ -1806,7 +1875,7 @@ type EventList struct {
 
 func (x *EventList) Reset() {
 	*x = EventList{}
-	mi := &file_mailand_proto_msgTypes[25]
+	mi := &file_mailand_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1818,7 +1887,7 @@ func (x *EventList) String() string {
 func (*EventList) ProtoMessage() {}
 
 func (x *EventList) ProtoReflect() protoreflect.Message {
-	mi := &file_mailand_proto_msgTypes[25]
+	mi := &file_mailand_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1831,7 +1900,7 @@ func (x *EventList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EventList.ProtoReflect.Descriptor instead.
 func (*EventList) Descriptor() ([]byte, []int) {
-	return file_mailand_proto_rawDescGZIP(), []int{25}
+	return file_mailand_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *EventList) GetEvents() []*CalendarEvent {
@@ -1852,7 +1921,7 @@ type ListContactsRequest struct {
 
 func (x *ListContactsRequest) Reset() {
 	*x = ListContactsRequest{}
-	mi := &file_mailand_proto_msgTypes[26]
+	mi := &file_mailand_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1864,7 +1933,7 @@ func (x *ListContactsRequest) String() string {
 func (*ListContactsRequest) ProtoMessage() {}
 
 func (x *ListContactsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mailand_proto_msgTypes[26]
+	mi := &file_mailand_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1877,7 +1946,7 @@ func (x *ListContactsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListContactsRequest.ProtoReflect.Descriptor instead.
 func (*ListContactsRequest) Descriptor() ([]byte, []int) {
-	return file_mailand_proto_rawDescGZIP(), []int{26}
+	return file_mailand_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *ListContactsRequest) GetQuery() string {
@@ -1917,7 +1986,7 @@ type Contact struct {
 
 func (x *Contact) Reset() {
 	*x = Contact{}
-	mi := &file_mailand_proto_msgTypes[27]
+	mi := &file_mailand_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1929,7 +1998,7 @@ func (x *Contact) String() string {
 func (*Contact) ProtoMessage() {}
 
 func (x *Contact) ProtoReflect() protoreflect.Message {
-	mi := &file_mailand_proto_msgTypes[27]
+	mi := &file_mailand_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1942,7 +2011,7 @@ func (x *Contact) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Contact.ProtoReflect.Descriptor instead.
 func (*Contact) Descriptor() ([]byte, []int) {
-	return file_mailand_proto_rawDescGZIP(), []int{27}
+	return file_mailand_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *Contact) GetId() string {
@@ -2015,7 +2084,7 @@ type SaveContactRequest struct {
 
 func (x *SaveContactRequest) Reset() {
 	*x = SaveContactRequest{}
-	mi := &file_mailand_proto_msgTypes[28]
+	mi := &file_mailand_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2027,7 +2096,7 @@ func (x *SaveContactRequest) String() string {
 func (*SaveContactRequest) ProtoMessage() {}
 
 func (x *SaveContactRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mailand_proto_msgTypes[28]
+	mi := &file_mailand_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2040,7 +2109,7 @@ func (x *SaveContactRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SaveContactRequest.ProtoReflect.Descriptor instead.
 func (*SaveContactRequest) Descriptor() ([]byte, []int) {
-	return file_mailand_proto_rawDescGZIP(), []int{28}
+	return file_mailand_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *SaveContactRequest) GetContactId() string {
@@ -2094,7 +2163,7 @@ type ContactRequest struct {
 
 func (x *ContactRequest) Reset() {
 	*x = ContactRequest{}
-	mi := &file_mailand_proto_msgTypes[29]
+	mi := &file_mailand_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2106,7 +2175,7 @@ func (x *ContactRequest) String() string {
 func (*ContactRequest) ProtoMessage() {}
 
 func (x *ContactRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mailand_proto_msgTypes[29]
+	mi := &file_mailand_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2119,7 +2188,7 @@ func (x *ContactRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ContactRequest.ProtoReflect.Descriptor instead.
 func (*ContactRequest) Descriptor() ([]byte, []int) {
-	return file_mailand_proto_rawDescGZIP(), []int{29}
+	return file_mailand_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *ContactRequest) GetContactId() string {
@@ -2139,7 +2208,7 @@ type AddressMessagesRequest struct {
 
 func (x *AddressMessagesRequest) Reset() {
 	*x = AddressMessagesRequest{}
-	mi := &file_mailand_proto_msgTypes[30]
+	mi := &file_mailand_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2151,7 +2220,7 @@ func (x *AddressMessagesRequest) String() string {
 func (*AddressMessagesRequest) ProtoMessage() {}
 
 func (x *AddressMessagesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mailand_proto_msgTypes[30]
+	mi := &file_mailand_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2164,7 +2233,7 @@ func (x *AddressMessagesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AddressMessagesRequest.ProtoReflect.Descriptor instead.
 func (*AddressMessagesRequest) Descriptor() ([]byte, []int) {
-	return file_mailand_proto_rawDescGZIP(), []int{30}
+	return file_mailand_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *AddressMessagesRequest) GetAddresses() []string {
@@ -2190,7 +2259,7 @@ type ContactList struct {
 
 func (x *ContactList) Reset() {
 	*x = ContactList{}
-	mi := &file_mailand_proto_msgTypes[31]
+	mi := &file_mailand_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2202,7 +2271,7 @@ func (x *ContactList) String() string {
 func (*ContactList) ProtoMessage() {}
 
 func (x *ContactList) ProtoReflect() protoreflect.Message {
-	mi := &file_mailand_proto_msgTypes[31]
+	mi := &file_mailand_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2215,7 +2284,7 @@ func (x *ContactList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ContactList.ProtoReflect.Descriptor instead.
 func (*ContactList) Descriptor() ([]byte, []int) {
-	return file_mailand_proto_rawDescGZIP(), []int{31}
+	return file_mailand_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *ContactList) GetContacts() []*Contact {
@@ -2317,7 +2386,11 @@ const file_mailand_proto_rawDesc = "" +
 	"is_flagged\x18\x03 \x01(\bH\x01R\tisFlagged\x88\x01\x01B\n" +
 	"\n" +
 	"\b_is_readB\r\n" +
-	"\v_is_flagged\"\x9d\x02\n" +
+	"\v_is_flagged\"]\n" +
+	"\x0eSendAttachment\x12\x1a\n" +
+	"\bfilename\x18\x01 \x01(\tR\bfilename\x12\x1b\n" +
+	"\tmime_type\x18\x02 \x01(\tR\bmimeType\x12\x12\n" +
+	"\x04data\x18\x03 \x01(\fR\x04data\"\xdb\x02\n" +
 	"\x12SendMessageRequest\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x01 \x01(\tR\taccountId\x12\x0e\n" +
@@ -2330,7 +2403,8 @@ const file_mailand_proto_rawDesc = "" +
 	"\x03bcc\x18\b \x03(\tR\x03bcc\x12\x1e\n" +
 	"\vreply_to_id\x18\t \x01(\tR\treplyToId\x12\"\n" +
 	"\rforward_of_id\x18\n" +
-	" \x01(\tR\vforwardOfId\"A\n" +
+	" \x01(\tR\vforwardOfId\x12<\n" +
+	"\vattachments\x18\v \x03(\v2\x1a.mailand.v1.SendAttachmentR\vattachments\"A\n" +
 	"\x13SendMessageResponse\x12*\n" +
 	"\x11message_id_header\x18\x01 \x01(\tR\x0fmessageIdHeader\"\xb1\x02\n" +
 	"\vDaemonEvent\x120\n" +
@@ -2460,7 +2534,7 @@ func file_mailand_proto_rawDescGZIP() []byte {
 }
 
 var file_mailand_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_mailand_proto_msgTypes = make([]protoimpl.MessageInfo, 32)
+var file_mailand_proto_msgTypes = make([]protoimpl.MessageInfo, 33)
 var file_mailand_proto_goTypes = []any{
 	(DaemonEvent_Type)(0),          // 0: mailand.v1.DaemonEvent.Type
 	(*Empty)(nil),                  // 1: mailand.v1.Empty
@@ -2479,22 +2553,23 @@ var file_mailand_proto_goTypes = []any{
 	(*MessageDetail)(nil),          // 14: mailand.v1.MessageDetail
 	(*SearchRequest)(nil),          // 15: mailand.v1.SearchRequest
 	(*SetFlagsRequest)(nil),        // 16: mailand.v1.SetFlagsRequest
-	(*SendMessageRequest)(nil),     // 17: mailand.v1.SendMessageRequest
-	(*SendMessageResponse)(nil),    // 18: mailand.v1.SendMessageResponse
-	(*DaemonEvent)(nil),            // 19: mailand.v1.DaemonEvent
-	(*Calendar)(nil),               // 20: mailand.v1.Calendar
-	(*CalendarList)(nil),           // 21: mailand.v1.CalendarList
-	(*ListEventsRequest)(nil),      // 22: mailand.v1.ListEventsRequest
-	(*CalendarEvent)(nil),          // 23: mailand.v1.CalendarEvent
-	(*Attendee)(nil),               // 24: mailand.v1.Attendee
-	(*RespondToEventRequest)(nil),  // 25: mailand.v1.RespondToEventRequest
-	(*EventList)(nil),              // 26: mailand.v1.EventList
-	(*ListContactsRequest)(nil),    // 27: mailand.v1.ListContactsRequest
-	(*Contact)(nil),                // 28: mailand.v1.Contact
-	(*SaveContactRequest)(nil),     // 29: mailand.v1.SaveContactRequest
-	(*ContactRequest)(nil),         // 30: mailand.v1.ContactRequest
-	(*AddressMessagesRequest)(nil), // 31: mailand.v1.AddressMessagesRequest
-	(*ContactList)(nil),            // 32: mailand.v1.ContactList
+	(*SendAttachment)(nil),         // 17: mailand.v1.SendAttachment
+	(*SendMessageRequest)(nil),     // 18: mailand.v1.SendMessageRequest
+	(*SendMessageResponse)(nil),    // 19: mailand.v1.SendMessageResponse
+	(*DaemonEvent)(nil),            // 20: mailand.v1.DaemonEvent
+	(*Calendar)(nil),               // 21: mailand.v1.Calendar
+	(*CalendarList)(nil),           // 22: mailand.v1.CalendarList
+	(*ListEventsRequest)(nil),      // 23: mailand.v1.ListEventsRequest
+	(*CalendarEvent)(nil),          // 24: mailand.v1.CalendarEvent
+	(*Attendee)(nil),               // 25: mailand.v1.Attendee
+	(*RespondToEventRequest)(nil),  // 26: mailand.v1.RespondToEventRequest
+	(*EventList)(nil),              // 27: mailand.v1.EventList
+	(*ListContactsRequest)(nil),    // 28: mailand.v1.ListContactsRequest
+	(*Contact)(nil),                // 29: mailand.v1.Contact
+	(*SaveContactRequest)(nil),     // 30: mailand.v1.SaveContactRequest
+	(*ContactRequest)(nil),         // 31: mailand.v1.ContactRequest
+	(*AddressMessagesRequest)(nil), // 32: mailand.v1.AddressMessagesRequest
+	(*ContactList)(nil),            // 33: mailand.v1.ContactList
 }
 var file_mailand_proto_depIdxs = []int32{
 	3,  // 0: mailand.v1.AccountList.accounts:type_name -> mailand.v1.Account
@@ -2503,50 +2578,51 @@ var file_mailand_proto_depIdxs = []int32{
 	11, // 3: mailand.v1.AttachmentData.info:type_name -> mailand.v1.AttachmentInfo
 	8,  // 4: mailand.v1.MessageDetail.header:type_name -> mailand.v1.MessageHeader
 	11, // 5: mailand.v1.MessageDetail.attachments:type_name -> mailand.v1.AttachmentInfo
-	0,  // 6: mailand.v1.DaemonEvent.type:type_name -> mailand.v1.DaemonEvent.Type
-	20, // 7: mailand.v1.CalendarList.calendars:type_name -> mailand.v1.Calendar
-	24, // 8: mailand.v1.CalendarEvent.attendees:type_name -> mailand.v1.Attendee
-	23, // 9: mailand.v1.EventList.events:type_name -> mailand.v1.CalendarEvent
-	28, // 10: mailand.v1.ContactList.contacts:type_name -> mailand.v1.Contact
-	1,  // 11: mailand.v1.MailandService.ListAccounts:input_type -> mailand.v1.Empty
-	2,  // 12: mailand.v1.MailandService.ListFolders:input_type -> mailand.v1.AccountRequest
-	7,  // 13: mailand.v1.MailandService.ListMessages:input_type -> mailand.v1.ListMessagesRequest
-	10, // 14: mailand.v1.MailandService.GetMessage:input_type -> mailand.v1.MessageRequest
-	12, // 15: mailand.v1.MailandService.GetAttachment:input_type -> mailand.v1.AttachmentRequest
-	15, // 16: mailand.v1.MailandService.SearchMessages:input_type -> mailand.v1.SearchRequest
-	16, // 17: mailand.v1.MailandService.SetMessageFlags:input_type -> mailand.v1.SetFlagsRequest
-	17, // 18: mailand.v1.MailandService.SendMessage:input_type -> mailand.v1.SendMessageRequest
-	2,  // 19: mailand.v1.MailandService.TriggerSync:input_type -> mailand.v1.AccountRequest
-	1,  // 20: mailand.v1.MailandService.ListCalendars:input_type -> mailand.v1.Empty
-	22, // 21: mailand.v1.MailandService.ListEvents:input_type -> mailand.v1.ListEventsRequest
-	27, // 22: mailand.v1.MailandService.ListContacts:input_type -> mailand.v1.ListContactsRequest
-	29, // 23: mailand.v1.MailandService.SaveContact:input_type -> mailand.v1.SaveContactRequest
-	30, // 24: mailand.v1.MailandService.DeleteContact:input_type -> mailand.v1.ContactRequest
-	31, // 25: mailand.v1.MailandService.ListMessagesByAddress:input_type -> mailand.v1.AddressMessagesRequest
-	25, // 26: mailand.v1.MailandService.RespondToEvent:input_type -> mailand.v1.RespondToEventRequest
-	1,  // 27: mailand.v1.MailandService.SubscribeEvents:input_type -> mailand.v1.Empty
-	4,  // 28: mailand.v1.MailandService.ListAccounts:output_type -> mailand.v1.AccountList
-	6,  // 29: mailand.v1.MailandService.ListFolders:output_type -> mailand.v1.FolderList
-	9,  // 30: mailand.v1.MailandService.ListMessages:output_type -> mailand.v1.MessageHeaderList
-	14, // 31: mailand.v1.MailandService.GetMessage:output_type -> mailand.v1.MessageDetail
-	13, // 32: mailand.v1.MailandService.GetAttachment:output_type -> mailand.v1.AttachmentData
-	9,  // 33: mailand.v1.MailandService.SearchMessages:output_type -> mailand.v1.MessageHeaderList
-	1,  // 34: mailand.v1.MailandService.SetMessageFlags:output_type -> mailand.v1.Empty
-	18, // 35: mailand.v1.MailandService.SendMessage:output_type -> mailand.v1.SendMessageResponse
-	1,  // 36: mailand.v1.MailandService.TriggerSync:output_type -> mailand.v1.Empty
-	21, // 37: mailand.v1.MailandService.ListCalendars:output_type -> mailand.v1.CalendarList
-	26, // 38: mailand.v1.MailandService.ListEvents:output_type -> mailand.v1.EventList
-	32, // 39: mailand.v1.MailandService.ListContacts:output_type -> mailand.v1.ContactList
-	28, // 40: mailand.v1.MailandService.SaveContact:output_type -> mailand.v1.Contact
-	1,  // 41: mailand.v1.MailandService.DeleteContact:output_type -> mailand.v1.Empty
-	9,  // 42: mailand.v1.MailandService.ListMessagesByAddress:output_type -> mailand.v1.MessageHeaderList
-	1,  // 43: mailand.v1.MailandService.RespondToEvent:output_type -> mailand.v1.Empty
-	19, // 44: mailand.v1.MailandService.SubscribeEvents:output_type -> mailand.v1.DaemonEvent
-	28, // [28:45] is the sub-list for method output_type
-	11, // [11:28] is the sub-list for method input_type
-	11, // [11:11] is the sub-list for extension type_name
-	11, // [11:11] is the sub-list for extension extendee
-	0,  // [0:11] is the sub-list for field type_name
+	17, // 6: mailand.v1.SendMessageRequest.attachments:type_name -> mailand.v1.SendAttachment
+	0,  // 7: mailand.v1.DaemonEvent.type:type_name -> mailand.v1.DaemonEvent.Type
+	21, // 8: mailand.v1.CalendarList.calendars:type_name -> mailand.v1.Calendar
+	25, // 9: mailand.v1.CalendarEvent.attendees:type_name -> mailand.v1.Attendee
+	24, // 10: mailand.v1.EventList.events:type_name -> mailand.v1.CalendarEvent
+	29, // 11: mailand.v1.ContactList.contacts:type_name -> mailand.v1.Contact
+	1,  // 12: mailand.v1.MailandService.ListAccounts:input_type -> mailand.v1.Empty
+	2,  // 13: mailand.v1.MailandService.ListFolders:input_type -> mailand.v1.AccountRequest
+	7,  // 14: mailand.v1.MailandService.ListMessages:input_type -> mailand.v1.ListMessagesRequest
+	10, // 15: mailand.v1.MailandService.GetMessage:input_type -> mailand.v1.MessageRequest
+	12, // 16: mailand.v1.MailandService.GetAttachment:input_type -> mailand.v1.AttachmentRequest
+	15, // 17: mailand.v1.MailandService.SearchMessages:input_type -> mailand.v1.SearchRequest
+	16, // 18: mailand.v1.MailandService.SetMessageFlags:input_type -> mailand.v1.SetFlagsRequest
+	18, // 19: mailand.v1.MailandService.SendMessage:input_type -> mailand.v1.SendMessageRequest
+	2,  // 20: mailand.v1.MailandService.TriggerSync:input_type -> mailand.v1.AccountRequest
+	1,  // 21: mailand.v1.MailandService.ListCalendars:input_type -> mailand.v1.Empty
+	23, // 22: mailand.v1.MailandService.ListEvents:input_type -> mailand.v1.ListEventsRequest
+	28, // 23: mailand.v1.MailandService.ListContacts:input_type -> mailand.v1.ListContactsRequest
+	30, // 24: mailand.v1.MailandService.SaveContact:input_type -> mailand.v1.SaveContactRequest
+	31, // 25: mailand.v1.MailandService.DeleteContact:input_type -> mailand.v1.ContactRequest
+	32, // 26: mailand.v1.MailandService.ListMessagesByAddress:input_type -> mailand.v1.AddressMessagesRequest
+	26, // 27: mailand.v1.MailandService.RespondToEvent:input_type -> mailand.v1.RespondToEventRequest
+	1,  // 28: mailand.v1.MailandService.SubscribeEvents:input_type -> mailand.v1.Empty
+	4,  // 29: mailand.v1.MailandService.ListAccounts:output_type -> mailand.v1.AccountList
+	6,  // 30: mailand.v1.MailandService.ListFolders:output_type -> mailand.v1.FolderList
+	9,  // 31: mailand.v1.MailandService.ListMessages:output_type -> mailand.v1.MessageHeaderList
+	14, // 32: mailand.v1.MailandService.GetMessage:output_type -> mailand.v1.MessageDetail
+	13, // 33: mailand.v1.MailandService.GetAttachment:output_type -> mailand.v1.AttachmentData
+	9,  // 34: mailand.v1.MailandService.SearchMessages:output_type -> mailand.v1.MessageHeaderList
+	1,  // 35: mailand.v1.MailandService.SetMessageFlags:output_type -> mailand.v1.Empty
+	19, // 36: mailand.v1.MailandService.SendMessage:output_type -> mailand.v1.SendMessageResponse
+	1,  // 37: mailand.v1.MailandService.TriggerSync:output_type -> mailand.v1.Empty
+	22, // 38: mailand.v1.MailandService.ListCalendars:output_type -> mailand.v1.CalendarList
+	27, // 39: mailand.v1.MailandService.ListEvents:output_type -> mailand.v1.EventList
+	33, // 40: mailand.v1.MailandService.ListContacts:output_type -> mailand.v1.ContactList
+	29, // 41: mailand.v1.MailandService.SaveContact:output_type -> mailand.v1.Contact
+	1,  // 42: mailand.v1.MailandService.DeleteContact:output_type -> mailand.v1.Empty
+	9,  // 43: mailand.v1.MailandService.ListMessagesByAddress:output_type -> mailand.v1.MessageHeaderList
+	1,  // 44: mailand.v1.MailandService.RespondToEvent:output_type -> mailand.v1.Empty
+	20, // 45: mailand.v1.MailandService.SubscribeEvents:output_type -> mailand.v1.DaemonEvent
+	29, // [29:46] is the sub-list for method output_type
+	12, // [12:29] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_mailand_proto_init() }
@@ -2561,7 +2637,7 @@ func file_mailand_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_mailand_proto_rawDesc), len(file_mailand_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   32,
+			NumMessages:   33,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -233,6 +233,24 @@ systemctl --user restart mailand-daemon
 
 The same login (`email` + keyring password) is used for IMAP, SMTP, CalDAV and CardDAV. For the DAV URLs, the server root is usually enough: mailand looks up your principal, then the calendar or address-book home, then the collections. If discovery fails it treats the URL as a single calendar or address book. Standards-compliant servers (Fastmail, Nextcloud, Radicale, Baïkal and similar) should work. Only Google's endpoints and an in-process test server have been exercised so far, so please report servers that don't.
 
+### Desktop notifications
+
+`mailand-daemon` sends native desktop notifications over the session D-Bus (`org.freedesktop.Notifications`) even when `mailand-ui` is closed:
+
+- **New mail:** notifies on newly arrived unread INBOX messages (suppressed during initial mailbox backfill; batches are grouped).
+- **Upcoming meetings:** notifies 10 minutes before non-cancelled, non-declined meetings start (skipping all-day events by default).
+
+Both are enabled by default. To customize or disable them in `~/.config/mailand/config.toml`:
+
+```toml
+[notifications]
+enabled = true
+mail = true
+calendar = true
+calendar_lead_time = "10m"
+all_day = false
+```
+
 ---
 
 ## Using mailand
@@ -286,6 +304,7 @@ A searchable list (name, email or organization) and a detail panel with emails, 
 | `m` / `s` | Toggle read / star |
 | **Composer** | |
 | `Ctrl+Enter` | Send |
+| `Ctrl+Shift+A` | Attach files |
 | `↑` `↓` `Enter` | Choose an address suggestion |
 | `Esc` | Close (asks if there are unsaved changes) |
 | **Calendar** | |

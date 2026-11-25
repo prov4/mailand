@@ -30,6 +30,7 @@ Popup {
         ] },
         { title: "Composer", rows: [
             { keys: "Ctrl+Enter", what: "Send" },
+            { keys: "Ctrl+Shift+A", what: "Attach files" },
             { keys: "↑ ↓ Enter", what: "Pick an address suggestion" },
             { keys: "Esc", what: "Close" }
         ] },

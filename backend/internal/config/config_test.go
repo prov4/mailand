@@ -153,3 +153,37 @@ smtp_host = "h"
 		t.Errorf("imap without DAV: %q %q", w.CalendarURL(), w.ContactsURL())
 	}
 }
+
+func TestNotifications(t *testing.T) {
+	// Defaults when omitted.
+	cfg, err := Load(write(t, google))
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := cfg.NotificationsConfig()
+	if !n.Enabled || !n.Mail || !n.Calendar || n.CalendarLead != DefaultCalendarLeadTime || n.AllDay {
+		t.Fatalf("defaults: %+v", n)
+	}
+
+	// Custom settings.
+	cfg, err = Load(write(t, google+`
+[notifications]
+enabled = true
+mail = false
+calendar = true
+calendar_lead_time = "15m"
+all_day = true
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	n = cfg.NotificationsConfig()
+	if !n.Enabled || n.Mail || !n.Calendar || n.CalendarLead != 15*time.Minute || !n.AllDay {
+		t.Fatalf("custom: %+v", n)
+	}
+
+	// Invalid lead time rejected.
+	if _, err := Load(write(t, google+"[notifications]\ncalendar_lead_time = \"-5m\"\n")); err == nil || !strings.Contains(err.Error(), "calendar_lead_time") {
+		t.Fatalf("expected error for negative lead time, got %v", err)
+	}
+}

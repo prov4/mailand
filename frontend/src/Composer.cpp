@@ -1,5 +1,8 @@
 #include "Composer.h"
 
+#include <QFile>
+#include <QFileInfo>
+#include <QMimeDatabase>
 #include <QRegularExpression>
 #include <QSet>
 #include <QVariantMap>
@@ -8,6 +11,8 @@
 #include "Rpc.h"
 
 namespace {
+
+constexpr qint64 kMaxAttachmentTotal = 25LL * 1024 * 1024;
 
 QString s(const std::string &v) { return QString::fromStdString(v); }
 
@@ -143,7 +148,7 @@ void Composer::updateDirty()
 {
     const bool d = !m_loading
                    && (m_to != m_i_to || m_cc != m_i_cc || m_bcc != m_i_bcc || m_subject != m_i_subject
-                       || m_body != m_i_body);
+                       || m_body != m_i_body || !m_userAttachments.isEmpty());
     if (d != m_dirty) {
         m_dirty = d;
         emit dirtyChanged();
@@ -180,9 +185,14 @@ void Composer::reset(const QString &mode, const QString &accountId)
     setError(QString());
     m_replyToId.clear();
     m_forwardOfId.clear();
+    m_forwardAttachmentBytes = 0;
     if (!m_attachments.isEmpty()) {
         m_attachments.clear();
         emit forwardAttachmentsChanged();
+    }
+    if (!m_userAttachments.isEmpty()) {
+        m_userAttachments.clear();
+        emit attachmentsChanged();
     }
     setAccountId(accountId);
     if (m_mode != mode) {
@@ -254,6 +264,7 @@ void Composer::loadOriginal(const QString &messageId, bool forward, bool replyAl
                 for (const auto &a : d.attachments()) {
                     if (a.inline_())
                         continue;
+                    m_forwardAttachmentBytes += static_cast<qint64>(a.size_bytes());
                     m_attachments.append(QVariantMap{{QStringLiteral("filename"), s(a.filename())},
                                                      {QStringLiteral("sizeText"), Format::sizeText(a.size_bytes())}});
                 }
@@ -297,6 +308,68 @@ void Composer::loadOriginal(const QString &messageId, bool forward, bool replyAl
         });
 }
 
+// ---- attachments --------------------------------------------------------------------------------
+
+void Composer::addAttachments(const QList<QUrl> &urls)
+{
+    if (m_sending || m_loading || urls.isEmpty())
+        return;
+
+    qint64 total = m_forwardAttachmentBytes;
+    QSet<QString> existing;
+    for (const QVariant &v : m_userAttachments) {
+        const QVariantMap m = v.toMap();
+        existing.insert(m.value(QStringLiteral("path")).toString());
+        total += m.value(QStringLiteral("sizeBytes")).toLongLong();
+    }
+
+    QMimeDatabase mimeDb;
+    bool added = false;
+    QString err;
+    for (const QUrl &u : urls) {
+        const QString path = u.isLocalFile() ? u.toLocalFile() : u.toString();
+        if (path.isEmpty() || existing.contains(path))
+            continue;
+        QFileInfo fi(path);
+        if (!fi.exists() || !fi.isFile() || !fi.isReadable()) {
+            err = QStringLiteral("Cannot read file: ") + fi.fileName();
+            continue;
+        }
+        const qint64 sz = fi.size();
+        if (total + sz > kMaxAttachmentTotal) {
+            err = QStringLiteral("Attachments exceed the 25 MiB limit.");
+            continue;
+        }
+        total += sz;
+        existing.insert(path);
+        QString mime = mimeDb.mimeTypeForFile(fi).name();
+        if (mime.isEmpty())
+            mime = QStringLiteral("application/octet-stream");
+        m_userAttachments.append(QVariantMap{
+            {QStringLiteral("path"), path},
+            {QStringLiteral("filename"), fi.fileName()},
+            {QStringLiteral("mimeType"), mime},
+            {QStringLiteral("sizeBytes"), sz},
+            {QStringLiteral("sizeText"), Format::sizeText(static_cast<quint64>(sz))},
+        });
+        added = true;
+    }
+    setError(err);
+    if (added) {
+        emit attachmentsChanged();
+        updateDirty();
+    }
+}
+
+void Composer::removeAttachment(int index)
+{
+    if (m_sending || index < 0 || index >= m_userAttachments.size())
+        return;
+    m_userAttachments.removeAt(index);
+    emit attachmentsChanged();
+    updateDirty();
+}
+
 // ---- send ---------------------------------------------------------------------------------------
 
 void Composer::send()
@@ -326,6 +399,33 @@ void Composer::send()
     req.set_text_body(m_body.toStdString());
     req.set_reply_to_id(m_replyToId.toStdString());
     req.set_forward_of_id(m_forwardOfId.toStdString());
+
+    qint64 totalBytes = m_forwardAttachmentBytes;
+    for (const QVariant &v : m_userAttachments) {
+        const QVariantMap m = v.toMap();
+        const QString path = m.value(QStringLiteral("path")).toString();
+        const QString filename = m.value(QStringLiteral("filename")).toString();
+        const QString mimeType = m.value(QStringLiteral("mimeType")).toString();
+        QFile f(path);
+        if (!f.open(QIODevice::ReadOnly)) {
+            const QString msg = QStringLiteral("Could not read attachment: ") + filename;
+            setError(msg);
+            emit failed(msg);
+            return;
+        }
+        const QByteArray bytes = f.readAll();
+        totalBytes += bytes.size();
+        if (totalBytes > kMaxAttachmentTotal) {
+            const QString msg = QStringLiteral("Attachments exceed the 25 MiB limit.");
+            setError(msg);
+            emit failed(msg);
+            return;
+        }
+        auto *att = req.add_attachments();
+        att->set_filename(filename.toStdString());
+        att->set_mime_type(mimeType.toStdString());
+        att->set_data(bytes.constData(), static_cast<size_t>(bytes.size()));
+    }
 
     setError(QString());
     m_sending = true;

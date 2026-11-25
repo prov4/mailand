@@ -5,7 +5,7 @@
 # build() reads the checkout at $startdir/.. directly, so run `makepkg` from
 # this directory (or `make package` from the repo root).
 pkgname=mailand-git
-pkgver=0.2.0.r5.gd94dda1
+pkgver=0.3.0.r7.g1815832
 pkgrel=1
 pkgdesc='Keyboard-driven mail client for Hyprland: Go daemon (mailand-daemon) + Qt 6 UI (mailand-ui)'
 arch=('x86_64')

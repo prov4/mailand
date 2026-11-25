@@ -44,6 +44,7 @@ type Request struct {
 	InReplyTo   string // raw Message-ID fallback
 	ReplyToID   string // mailand message id; takes precedence over InReplyTo
 	ForwardOfID string // mailand message id whose attachments are attached
+	Attachments []Attachment
 }
 
 func invalid(format string, a ...any) error {
@@ -70,6 +71,13 @@ func Validate(r Request) error {
 	for name, l := range map[string][]string{"to": r.To, "cc": r.Cc, "bcc": r.Bcc} {
 		if _, err := parseAddrs(name, l); err != nil {
 			return err
+		}
+	}
+	total := 0
+	for _, a := range r.Attachments {
+		total += len(a.Data)
+		if total > maxAttachmentTotal {
+			return invalid("attachments larger than %d MiB", maxAttachmentTotal>>20)
 		}
 	}
 	return nil
@@ -320,6 +328,27 @@ func Build(ctx context.Context, st *store.Store, acct store.Account, req Request
 			return nil, err
 		}
 		in.Attachments = atts
+	}
+	if len(req.Attachments) > 0 {
+		total := 0
+		for _, a := range in.Attachments {
+			total += len(a.Data)
+		}
+		for _, a := range req.Attachments {
+			total += len(a.Data)
+			if total > maxAttachmentTotal {
+				return nil, invalid("attachments larger than %d MiB", maxAttachmentTotal>>20)
+			}
+			typ := a.MIMEType
+			if _, _, err := mime.ParseMediaType(typ); err != nil {
+				typ = "application/octet-stream"
+			}
+			in.Attachments = append(in.Attachments, Attachment{
+				Filename: a.Filename,
+				MIMEType: typ,
+				Data:     a.Data,
+			})
+		}
 	}
 
 	raw, id, err := Compose(in)

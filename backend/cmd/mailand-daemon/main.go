@@ -17,6 +17,7 @@ import (
 	"mailand/backend/internal/config"
 	"mailand/backend/internal/dav"
 	"mailand/backend/internal/mail"
+	"mailand/backend/internal/notify"
 	"mailand/backend/internal/rpc"
 	"mailand/backend/internal/rpc/pb"
 	"mailand/backend/internal/send"
@@ -87,6 +88,7 @@ func run(log *slog.Logger, socket string, offline bool) error {
 	var contacts rpc.ContactEditor
 	var mgr *mail.Manager
 	var davMgr *dav.Manager
+	var notifier *notify.Service
 	if offline {
 		syncer = rpc.NewOfflineSyncer(st, broker)
 		sender = send.NewOfflineSender(st, config.BlobDir(), func(accountID, folderID string) {
@@ -96,13 +98,22 @@ func run(log *slog.Logger, socket string, offline bool) error {
 		contacts = rpc.NewOfflineContacts(st, broker)
 		log.Warn("offline mode: no IMAP, flag changes are local only")
 	} else if len(cfg.Accounts) > 0 {
+		notifier = notify.New(cfg.NotificationsConfig(), st, notify.NewDBusSender(), log)
+		if err := notifier.Start(ctx); err != nil {
+			return fmt.Errorf("notifications: %w", err)
+		}
 		mgr = mail.NewManager(cfg, st, config.BlobDir(), func(ev mail.Event) {
 			broker.Publish(toPB(ev)) // non-blocking
+			notifier.OnMailEvent(ev)
 		}, log)
 		if err := mgr.Start(ctx); err != nil {
+			notifier.Stop()
 			return err
 		}
-		davMgr = dav.NewManager(cfg, st, func(ev dav.Event) { broker.Publish(davToPB(ev)) }, log)
+		davMgr = dav.NewManager(cfg, st, func(ev dav.Event) {
+			broker.Publish(davToPB(ev))
+			notifier.OnDavEvent(ev)
+		}, log)
 		davMgr.Start(ctx)
 		responder = davMgr
 		contacts = davMgr
@@ -140,6 +151,9 @@ func run(log *slog.Logger, socket string, offline bool) error {
 	}
 	if davMgr != nil {
 		davMgr.Stop()
+	}
+	if notifier != nil {
+		notifier.Stop()
 	}
 	return err
 }
